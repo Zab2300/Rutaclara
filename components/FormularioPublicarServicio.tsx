@@ -68,7 +68,8 @@ export default function FormularioPublicarServicio({
     const distancia = obtenerDistanciaSync(origen, destino);
     if (!distancia) return null;
     return calcularCotizacion({
-      tipoServicio: "trayecto",
+      // Los servicios del tablero siempre asumen que el vehículo vuelve.
+      tipoServicio: "trayecto_ida_regreso",
       origen,
       destino,
       kmIda: distancia.km,

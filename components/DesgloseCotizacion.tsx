@@ -15,13 +15,18 @@ function Fila({ etiqueta, valor, sutil = false }: { etiqueta: string; valor: str
 
 const ETIQUETA_TIPO_SERVICIO: Record<Cotizacion["tipoServicio"], string> = {
   trayecto: "Trayecto",
-  por_horas: "Por horas",
+  trayecto_ida_regreso: "Trayecto ida y regreso",
+  por_horas: "Servicio por horas",
   dia_sol: "Día de sol",
+  disponibilidad_completa: "Disponibilidad completa",
 };
 
 export default function DesgloseCotizacion({ cotizacion }: { cotizacion: Cotizacion }) {
   const tipologia = TARIFAS_KM[cotizacion.tipologia];
-  const esTrayecto = cotizacion.tipoServicio === "trayecto";
+  const esTrayecto =
+    cotizacion.tipoServicio === "trayecto" || cotizacion.tipoServicio === "trayecto_ida_regreso";
+  const esIdaYRegreso = cotizacion.tipoServicio === "trayecto_ida_regreso";
+  const esDisponibilidad = cotizacion.tipoServicio === "disponibilidad_completa";
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-tarjeta">
@@ -46,11 +51,11 @@ export default function DesgloseCotizacion({ cotizacion }: { cotizacion: Cotizac
       )}
 
       <div className="divide-y divide-slate-100">
-        {esTrayecto ? (
+        {esTrayecto && (
           <>
             <Fila etiqueta="Distancia (ida)" valor={`${cotizacion.kmIda} km`} sutil />
             <Fila
-              etiqueta="Distancia total (ida y regreso)"
+              etiqueta={esIdaYRegreso ? "Distancia total (ida y regreso)" : "Distancia total"}
               valor={`${cotizacion.kmTotales} km`}
               sutil
             />
@@ -59,9 +64,13 @@ export default function DesgloseCotizacion({ cotizacion }: { cotizacion: Cotizac
               valor={`${formatoMoneda(cotizacion.tarifaKmAplicada)}/km`}
             />
             <Fila etiqueta="Subtotal por distancia" valor={formatoMoneda(cotizacion.subtotalKm)} />
-            <Fila etiqueta="Peajes (ida y regreso)" valor={formatoMoneda(cotizacion.peajes)} />
+            <Fila
+              etiqueta={esIdaYRegreso ? "Peajes (ida y regreso)" : "Peaje (solo ida)"}
+              valor={formatoMoneda(cotizacion.peajes)}
+            />
           </>
-        ) : (
+        )}
+        {(cotizacion.tipoServicio === "por_horas" || cotizacion.tipoServicio === "dia_sol") && (
           <>
             <Fila
               etiqueta="Horas contratadas"
@@ -81,6 +90,16 @@ export default function DesgloseCotizacion({ cotizacion }: { cotizacion: Cotizac
               />
             )}
             <Fila etiqueta="Subtotal del servicio" valor={formatoMoneda(cotizacion.subtotalHoras)} />
+          </>
+        )}
+        {esDisponibilidad && (
+          <>
+            <Fila etiqueta="Días contratados" valor={`${cotizacion.numeroDias} día(s)`} sutil />
+            <Fila etiqueta="Valor por día" valor={formatoMoneda(cotizacion.valorPorDia)} />
+            <Fila
+              etiqueta="Subtotal del servicio"
+              valor={formatoMoneda(cotizacion.subtotalDisponibilidad)}
+            />
           </>
         )}
         {cotizacion.aplicaRecargoNocturno && (
@@ -105,6 +124,16 @@ export default function DesgloseCotizacion({ cotizacion }: { cotizacion: Cotizac
               cotizacion.evento.recargo * 100
             )}%)`}
             valor={formatoMoneda(cotizacion.recargoEventoValor)}
+          />
+        )}
+        {cotizacion.viaticosIncluidos && (
+          <Fila
+            etiqueta={
+              esDisponibilidad
+                ? `Alimentación y hospedaje del conductor (${cotizacion.numeroDias} día(s))`
+                : "Alimentación y hospedaje del conductor"
+            }
+            valor={formatoMoneda(cotizacion.valorViaticos)}
           />
         )}
         {cotizacion.tarifaMinimaAplicada && (

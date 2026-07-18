@@ -24,9 +24,23 @@ import { detectarRestriccion } from "@/lib/direcciones";
 import type { Cotizacion, TipoServicio, TipologiaId } from "@/lib/tipos";
 
 const TIPOS_SERVICIO: { id: TipoServicio; etiqueta: string; texto: string }[] = [
-  { id: "trayecto", etiqueta: "TRAYECTO", texto: "Origen y destino, precio por distancia" },
-  { id: "por_horas", etiqueta: "POR HORAS", texto: "Vehículo por horas en una zona, mín. 4 horas" },
-  { id: "dia_sol", etiqueta: "DÍA DE SOL", texto: "Jornada completa, mínimo 9 horas" },
+  { id: "trayecto", etiqueta: "Trayecto", texto: "Origen y destino, un solo sentido (sin regreso incluido)" },
+  {
+    id: "trayecto_ida_regreso",
+    etiqueta: "Trayecto ida y regreso",
+    texto: "Origen y destino, el vehículo regresa",
+  },
+  { id: "dia_sol", etiqueta: "Día de sol", texto: "Jornada completa en la ciudad, mínimo 9 horas" },
+  {
+    id: "por_horas",
+    etiqueta: "Servicio por horas",
+    texto: "Vehículo por horas en una zona, mínimo 4 horas",
+  },
+  {
+    id: "disponibilidad_completa",
+    etiqueta: "Disponibilidad completa",
+    texto: "Vehículo disponible varios días para distintos recorridos",
+  },
 ];
 
 export default function PaginaCotizador() {
@@ -41,6 +55,8 @@ export default function PaginaCotizador() {
   const [fecha, setFecha] = useState("");
   const [hora, setHora] = useState("08:00");
   const [horaFin, setHoraFin] = useState("");
+  const [numeroDias, setNumeroDias] = useState<number>(1);
+  const [viaticosConductor, setViaticosConductor] = useState(false);
   const [pasajeros, setPasajeros] = useState<number>(0);
   const [tipologia, setTipologia] = useState<TipologiaId | null>(null);
 
@@ -49,36 +65,39 @@ export default function PaginaCotizador() {
   const [kmManual, setKmManual] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const esPorTiempo = tipoServicio !== "trayecto";
+  const esTrayecto = tipoServicio === "trayecto" || tipoServicio === "trayecto_ida_regreso";
+  const esPorHoras = tipoServicio === "por_horas" || tipoServicio === "dia_sol";
+  const esDisponibilidad = tipoServicio === "disponibilidad_completa";
 
   const formularioCompleto = useMemo(() => {
     const base = Boolean(origen && fecha && hora && pasajeros > 0 && tipologia);
-    if (tipoServicio === "trayecto") return Boolean(base && destino);
-    return Boolean(base && horaFin);
-  }, [tipoServicio, origen, destino, fecha, hora, horaFin, pasajeros, tipologia]);
+    if (esTrayecto) return Boolean(base && destino);
+    if (esPorHoras) return Boolean(base && horaFin);
+    return Boolean(base && numeroDias > 0);
+  }, [esTrayecto, esPorHoras, origen, destino, fecha, hora, horaFin, numeroDias, pasajeros, tipologia]);
 
   const infoFestivo = useMemo(() => consultarFestivo(fecha), [fecha]);
   const esFinDeSemanaFecha = useMemo(() => esFinDeSemana(fecha), [fecha]);
   const eventoAplicable = useMemo(
-    () => buscarEventoAplicable(origen, tipoServicio === "trayecto" ? destino : "", fecha),
-    [origen, destino, tipoServicio, fecha]
+    () => buscarEventoAplicable(origen, esTrayecto ? destino : "", fecha),
+    [origen, destino, esTrayecto, fecha]
   );
 
   const horasEstimadas = useMemo(() => {
-    if (!esPorTiempo || !hora || !horaFin) return null;
+    if (!esPorHoras || !hora || !horaFin) return null;
     return calcularHorasContratadas(hora, horaFin);
-  }, [esPorTiempo, hora, horaFin]);
+  }, [esPorHoras, hora, horaFin]);
 
   const restriccionZona = useMemo(() => {
     if (!tipologia) return null;
-    if (tipoServicio === "trayecto") {
+    if (esTrayecto) {
       return (
         detectarRestriccion(direccionOrigen, origen, tipologia) ??
         detectarRestriccion(direccionDestino, destino, tipologia)
       );
     }
     return detectarRestriccion(direccionOrigen, origen, tipologia);
-  }, [tipoServicio, direccionOrigen, direccionDestino, origen, destino, tipologia]);
+  }, [esTrayecto, direccionOrigen, direccionDestino, origen, destino, tipologia]);
 
   function cambiarTipoServicio(id: TipoServicio) {
     setTipoServicio(id);
@@ -88,9 +107,9 @@ export default function PaginaCotizador() {
   }
 
   function cotizarTrayecto(kmIda: number, peajeIda: number) {
-    if (!tipologia) return;
+    if (!tipologia || !esTrayecto) return;
     const cotizacion = calcularCotizacion({
-      tipoServicio: "trayecto",
+      tipoServicio: tipoServicio as "trayecto" | "trayecto_ida_regreso",
       origen,
       destino,
       kmIda,
@@ -100,6 +119,7 @@ export default function PaginaCotizador() {
       fecha,
       direccionOrigen: direccionOrigen || undefined,
       direccionDestino: direccionDestino || undefined,
+      viaticosConductor,
     });
     setResultado(cotizacion);
     setRutaNoEncontrada(false);
@@ -107,15 +127,32 @@ export default function PaginaCotizador() {
   }
 
   function cotizarPorHoras() {
-    if (!tipologia || tipoServicio === "trayecto") return;
+    if (!tipologia || !esPorHoras) return;
     const cotizacion = calcularCotizacion({
-      tipoServicio,
+      tipoServicio: tipoServicio as "por_horas" | "dia_sol",
       origen,
       tipologia,
       horaInicio: hora,
       horaFin,
       fecha,
       direccion: direccionOrigen || undefined,
+      viaticosConductor,
+    });
+    setResultado(cotizacion);
+    setError(null);
+  }
+
+  function cotizarDisponibilidad() {
+    if (!tipologia || !esDisponibilidad) return;
+    const cotizacion = calcularCotizacion({
+      tipoServicio: "disponibilidad_completa",
+      origen,
+      tipologia,
+      horaInicio: hora,
+      fecha,
+      numeroDias,
+      direccion: direccionOrigen || undefined,
+      viaticosConductor,
     });
     setResultado(cotizacion);
     setError(null);
@@ -127,22 +164,26 @@ export default function PaginaCotizador() {
 
     if (!formularioCompleto) {
       setError(
-        tipoServicio === "trayecto"
+        esTrayecto
           ? "Completa origen, destino, fecha, hora, pasajeros y el tipo de vehículo."
-          : "Completa origen, fecha, hora de inicio, hora final, pasajeros y el tipo de vehículo."
+          : esPorHoras
+          ? "Completa origen, fecha, hora de inicio, hora final, pasajeros y el tipo de vehículo."
+          : "Completa origen, fecha, hora, número de días, pasajeros y el tipo de vehículo."
       );
       return;
     }
 
-    if (tipoServicio === "trayecto") {
+    if (esTrayecto) {
       const distancia = obtenerDistanciaSync(origen, destino);
       if (!distancia) {
         setRutaNoEncontrada(true);
         return;
       }
       cotizarTrayecto(distancia.km, distancia.peaje);
-    } else {
+    } else if (esPorHoras) {
       cotizarPorHoras();
+    } else {
+      cotizarDisponibilidad();
     }
   }
 
@@ -162,7 +203,7 @@ export default function PaginaCotizador() {
   }
 
   function publicarEsteServicio() {
-    if (!resultado || !tipologia || tipoServicio !== "trayecto") return;
+    if (!resultado || !tipologia || !esTrayecto) return;
     const parametros = new URLSearchParams({
       publicar: "1",
       origen,
@@ -187,26 +228,25 @@ export default function PaginaCotizador() {
         desglosado.
       </p>
 
-      <div className="mb-4 space-y-2">
-        {TIPOS_SERVICIO.map((t) => {
-          const activo = tipoServicio === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => cambiarTipoServicio(t.id)}
-              className={`btn-grande flex w-full items-center justify-between border-2 px-4 text-left ${
-                activo ? "border-rc-azul bg-rc-azul text-white" : "border-slate-200 bg-white"
-              }`}
-              aria-pressed={activo}
-            >
-              <span className="font-bold">{t.etiqueta}</span>
-              <span className={`text-sm ${activo ? "text-white/90" : "text-slate-500"}`}>
-                {t.texto}
-              </span>
-            </button>
-          );
-        })}
+      <div className="mb-4">
+        <label htmlFor="tipoServicio" className="mb-1 block text-sm font-bold text-slate-600">
+          TIPO DE SERVICIO
+        </label>
+        <select
+          id="tipoServicio"
+          value={tipoServicio}
+          onChange={(e) => cambiarTipoServicio(e.target.value as TipoServicio)}
+          className="btn-grande w-full border-2 border-rc-azul bg-white px-4 text-lg font-bold text-rc-azul"
+        >
+          {TIPOS_SERVICIO.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.etiqueta}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-sm text-slate-500">
+          {TIPOS_SERVICIO.find((t) => t.id === tipoServicio)?.texto}
+        </p>
       </div>
 
       <form
@@ -218,7 +258,7 @@ export default function PaginaCotizador() {
       >
         <div>
           <label htmlFor="origen" className="mb-1 block text-sm font-bold text-slate-600">
-            {esPorTiempo ? "CIUDAD / MUNICIPIO" : "ORIGEN"}
+            {esTrayecto ? "ORIGEN" : "CIUDAD / MUNICIPIO"}
           </label>
           <input
             id="origen"
@@ -234,35 +274,9 @@ export default function PaginaCotizador() {
           />
         </div>
 
-        {tipoServicio === "trayecto" && (
-          <div>
-            <label htmlFor="destino" className="mb-1 block text-sm font-bold text-slate-600">
-              DESTINO
-            </label>
-            <input
-              id="destino"
-              list="municipios"
-              value={destino}
-              onChange={(e) => {
-                setDestino(e.target.value);
-                setResultado(null);
-                setRutaNoEncontrada(false);
-              }}
-              className="btn-grande w-full border border-slate-300 px-4 text-lg"
-              placeholder="Ej: Guatapé"
-            />
-          </div>
-        )}
-
-        <datalist id="municipios">
-          {MUNICIPIOS.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
-
         <div>
           <label htmlFor="direccionOrigen" className="mb-1 block text-sm font-bold text-slate-600">
-            {tipoServicio === "trayecto"
+            {esTrayecto
               ? "DIRECCIÓN EXACTA DE ORIGEN (OPCIONAL)"
               : "DIRECCIÓN O ZONA DE SERVICIO (OPCIONAL)"}
           </label>
@@ -279,23 +293,49 @@ export default function PaginaCotizador() {
           </p>
         </div>
 
-        {tipoServicio === "trayecto" && (
-          <div>
-            <label
-              htmlFor="direccionDestino"
-              className="mb-1 block text-sm font-bold text-slate-600"
-            >
-              DIRECCIÓN EXACTA DE DESTINO (OPCIONAL)
-            </label>
-            <input
-              id="direccionDestino"
-              value={direccionDestino}
-              onChange={(e) => setDireccionDestino(e.target.value)}
-              className="btn-grande w-full border border-slate-300 px-4 text-base"
-              placeholder="Ej: Calle del Recuerdo, Guatapé"
-            />
-          </div>
+        {esTrayecto && (
+          <>
+            <div>
+              <label htmlFor="destino" className="mb-1 block text-sm font-bold text-slate-600">
+                DESTINO
+              </label>
+              <input
+                id="destino"
+                list="municipios"
+                value={destino}
+                onChange={(e) => {
+                  setDestino(e.target.value);
+                  setResultado(null);
+                  setRutaNoEncontrada(false);
+                }}
+                className="btn-grande w-full border border-slate-300 px-4 text-lg"
+                placeholder="Ej: Guatapé"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="direccionDestino"
+                className="mb-1 block text-sm font-bold text-slate-600"
+              >
+                DIRECCIÓN EXACTA DE DESTINO (OPCIONAL)
+              </label>
+              <input
+                id="direccionDestino"
+                value={direccionDestino}
+                onChange={(e) => setDireccionDestino(e.target.value)}
+                className="btn-grande w-full border border-slate-300 px-4 text-base"
+                placeholder="Ej: Calle del Recuerdo, Guatapé"
+              />
+            </div>
+          </>
         )}
+
+        <datalist id="municipios">
+          {MUNICIPIOS.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -312,7 +352,7 @@ export default function PaginaCotizador() {
           </div>
           <div>
             <label htmlFor="hora" className="mb-1 block text-sm font-bold text-slate-600">
-              HORA {esPorTiempo ? "INICIO" : ""}
+              HORA {esPorHoras || esDisponibilidad ? "INICIO" : ""}
             </label>
             <input
               id="hora"
@@ -324,7 +364,7 @@ export default function PaginaCotizador() {
           </div>
         </div>
 
-        {esPorTiempo && (
+        {esPorHoras && (
           <div>
             <label htmlFor="horaFin" className="mb-1 block text-sm font-bold text-slate-600">
               HORA FINAL
@@ -343,6 +383,25 @@ export default function PaginaCotizador() {
                   ` — se cobra el mínimo de ${HORAS_MINIMAS[tipoServicio as "por_horas" | "dia_sol"]} horas.`}
               </p>
             )}
+          </div>
+        )}
+
+        {esDisponibilidad && (
+          <div>
+            <label htmlFor="numeroDias" className="mb-1 block text-sm font-bold text-slate-600">
+              NÚMERO DE DÍAS
+            </label>
+            <input
+              id="numeroDias"
+              type="number"
+              min={1}
+              max={30}
+              inputMode="numeric"
+              value={numeroDias || ""}
+              onChange={(e) => setNumeroDias(Number(e.target.value))}
+              className="btn-grande w-full border border-slate-300 px-4 text-lg"
+              placeholder="Ej: 3"
+            />
           </div>
         )}
 
@@ -371,6 +430,18 @@ export default function PaginaCotizador() {
             )}
           </div>
         )}
+
+        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+          <input
+            type="checkbox"
+            checked={viaticosConductor}
+            onChange={(e) => setViaticosConductor(e.target.checked)}
+            className="h-5 w-5 flex-shrink-0"
+          />
+          <span className="text-sm font-semibold text-slate-700">
+            Incluir alimentación y hospedaje del conductor ("todo costo")
+          </span>
+        </label>
 
         <div>
           <label htmlFor="pasajeros" className="mb-1 block text-sm font-bold text-slate-600">
@@ -417,7 +488,7 @@ export default function PaginaCotizador() {
         </button>
       </form>
 
-      {tipoServicio === "trayecto" && rutaNoEncontrada && (
+      {esTrayecto && rutaNoEncontrada && (
         <div className="mt-4 space-y-3 rounded-2xl border border-rc-amarillo bg-rc-amarillo-claro p-4">
           <p className="text-base font-semibold text-slate-700">
             Destino en verificación — pronto tendremos la tarifa exacta. Mientras tanto, cotiza
@@ -453,7 +524,7 @@ export default function PaginaCotizador() {
           >
             COMPARTIR POR WHATSAPP
           </button>
-          {tipoServicio === "trayecto" && (
+          {esTrayecto && (
             <button
               type="button"
               onClick={publicarEsteServicio}

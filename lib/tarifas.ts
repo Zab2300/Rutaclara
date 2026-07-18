@@ -4,13 +4,16 @@
  * Funciones puras (sin efectos secundarios, sin fetch, sin estado) para que
  * sean fáciles de testear. Toda la lógica de negocio del cotizador vive aquí.
  *
- * Hay dos modelos de precio, ver README.md para el detalle completo:
+ * Hay tres modelos de precio (cinco tipos de servicio), ver README.md para
+ * el detalle completo:
  *
- * A) TRAYECTO (origen → destino, por distancia)
+ * A) TRAYECTO / TRAYECTO IDA Y REGRESO (origen → destino, por distancia)
  *  1. El tramo de tarifa se determina con el km DE IDA (no el total).
  *  2. subtotalKm = km_ida × $/km del tramo — el $/km del listado ya está
  *     pensado sobre el km de ida, así cotiza el mercado hoy.
- *  3. Los peajes se cobran ida y regreso: peaje_ida × 2.
+ *  3. Ida y regreso cobra el peaje dos veces (peaje_ida × 2); el trayecto
+ *     sencillo solo cobra el peaje de ida, porque el regreso del vehículo no
+ *     forma parte de esta reserva.
  *
  * B) POR HORAS / DÍA DE SOL (vehículo contratado por tiempo)
  *  1. Por horas: mínimo 4 horas. Día de sol: mínimo 9 horas.
@@ -19,8 +22,12 @@
  *     horasAdicionales × valorHoraAdicional.
  *  4. No se cobran peajes (no hay una ruta fija definida).
  *
- * En ambos casos, sobre el "subtotal del servicio" (subtotalKm o
- * subtotalHoras) se acumulan los mismos recargos porcentuales:
+ * C) DISPONIBILIDAD COMPLETA (vehículo para distintos recorridos, varios días)
+ *  1. subtotalDisponibilidad = número de días × tarifa diaria (la misma de
+ *     "día de sol").
+ *
+ * En los tres casos, sobre el "subtotal del servicio" se acumulan los mismos
+ * recargos porcentuales:
  *   - Nocturno (30%): hora de inicio entre 8:00 p.m. y 6:00 a.m.
  *   - Fin de semana/festivo (20%): sábado, domingo o festivo colombiano.
  *   - Evento/temporada alta (varía por evento): ferias o fiestas conocidas
@@ -28,9 +35,13 @@
  * Luego se compara contra la tarifa/paquete mínimo, y el total se redondea
  * al múltiplo de $1.000 más cercano.
  *
- * Además, si se indica una dirección exacta, se verifica si la tipología
- * elegida tiene restricción de acceso en esa zona (lib/direcciones.ts) —
- * esto es solo informativo, no cambia el precio.
+ * Además:
+ *  - Si se marca "todo costo", se suman los viáticos del conductor
+ *    (alimentación + hospedaje) como un valor fijo por día — no lleva
+ *    recargo porcentual, es un costo de paso como los peajes.
+ *  - Si se indica una dirección exacta, se verifica si la tipología elegida
+ *    tiene restricción de acceso en esa zona (lib/direcciones.ts) — esto es
+ *    solo informativo, no cambia el precio.
  */
 
 import { detectarRestriccion } from "./direcciones";
@@ -40,6 +51,7 @@ import type {
   Cotizacion,
   IndiceTramo,
   ParametrosCotizacion,
+  ParametrosCotizacionDisponibilidad,
   ParametrosCotizacionPorHoras,
   ParametrosCotizacionTrayecto,
   Tipologia,
@@ -142,7 +154,12 @@ interface TarifaPorHoras {
   valorHoraAdicional: number;
 }
 
-/** Tarifas por tiempo (Antioquia, 2026): vehículo contratado por horas, no por ruta. */
+/**
+ * Tarifas por tiempo (Antioquia, 2026): vehículo contratado por horas, no por
+ * ruta. `paqueteDiaSol` también se reutiliza como tarifa/día de
+ * "disponibilidad completa" (día de sol repetido N días) — ver
+ * `calcularCotizacionDisponibilidad()`.
+ */
 export const TARIFA_POR_HORAS: Record<TipologiaId, TarifaPorHoras> = {
   automovil: { paquete4Horas: 140000, paqueteDiaSol: 260000, valorHoraAdicional: 25000 },
   campero: { paquete4Horas: 170000, paqueteDiaSol: 310000, valorHoraAdicional: 30000 },
@@ -155,6 +172,9 @@ export const TARIFA_POR_HORAS: Record<TipologiaId, TarifaPorHoras> = {
   buseton: { paquete4Horas: 380000, paqueteDiaSol: 720000, valorHoraAdicional: 72000 },
   bus: { paquete4Horas: 420000, paqueteDiaSol: 800000, valorHoraAdicional: 80000 },
 };
+
+/** Viático diario (alimentación + hospedaje) cuando el operador cubre "todo costo" del conductor. */
+export const VIATICOS_CONDUCTOR_DIA = 90000;
 
 /** Recargo nocturno: 20:00 a 06:00. */
 export const RECARGO_NOCTURNO = 0.3;
@@ -271,22 +291,44 @@ function calcularRecargosPorFecha(
   };
 }
 
+/** Viáticos del conductor ("todo costo"): un valor fijo por cada día del servicio. */
+function calcularViaticos(viaticosConductor: boolean | undefined, dias: number): number {
+  return viaticosConductor ? VIATICOS_CONDUCTOR_DIA * Math.max(dias, 1) : 0;
+}
+
+/** Valores por defecto (0 / null) de los campos que no aplican al modelo de precio actual. */
+const CAMPOS_TRAYECTO_VACIOS = { kmIda: 0, kmTotales: 0, tramo: null, tarifaKmAplicada: 0, subtotalKm: 0, peajes: 0 };
+const CAMPOS_HORAS_VACIOS = {
+  horasMinimas: 0,
+  horasContratadas: 0,
+  horasAdicionales: 0,
+  valorHoraAdicional: 0,
+  paqueteBase: 0,
+  subtotalHoras: 0,
+};
+const CAMPOS_DISPONIBILIDAD_VACIOS = { numeroDias: 0, valorPorDia: 0, subtotalDisponibilidad: 0 };
+
 function calcularCotizacionTrayecto(params: ParametrosCotizacionTrayecto): Cotizacion {
-  const { origen, destino, kmIda, peajeIda, tipologia, horaInicio, fecha } = params;
+  const { tipoServicio, origen, destino, kmIda, peajeIda, tipologia, horaInicio, fecha } = params;
+  const esIdaYRegreso = tipoServicio === "trayecto_ida_regreso";
 
   const tipologiaData = TARIFAS_KM[tipologia];
   const tramo = obtenerTramo(kmIda);
   const tarifaKmAplicada = tipologiaData.tarifas[tramo];
 
-  const kmTotales = kmIda * 2;
+  // El $/km del listado ya está pensado sobre el km de ida (así cotiza el
+  // mercado); lo que cambia entre sencillo e ida-y-regreso es si se cobra el
+  // peaje del regreso y si se muestra el km total como ida+vuelta o solo ida.
+  const kmTotales = esIdaYRegreso ? kmIda * 2 : kmIda;
   const subtotalKm = kmIda * tarifaKmAplicada;
 
   const peajeIdaAjustado = peajeParaTipologia(peajeIda, tipologia);
-  const peajes = peajeIdaAjustado * 2;
+  const peajes = esIdaYRegreso ? peajeIdaAjustado * 2 : peajeIdaAjustado;
 
   const recargos = calcularRecargosPorFecha(subtotalKm, origen, destino, fecha, horaInicio);
+  const valorViaticos = calcularViaticos(params.viaticosConductor, 1);
 
-  const preTotal = subtotalKm + peajes + recargos.totalRecargos;
+  const preTotal = subtotalKm + peajes + recargos.totalRecargos + valorViaticos;
   const minima = TARIFA_MINIMA[tipologia];
   const tarifaMinimaAplicada = preTotal < minima;
   const total = redondearMil(tarifaMinimaAplicada ? minima : preTotal);
@@ -296,7 +338,7 @@ function calcularCotizacionTrayecto(params: ParametrosCotizacionTrayecto): Cotiz
     detectarRestriccion(params.direccionDestino, destino, tipologia);
 
   return {
-    tipoServicio: "trayecto",
+    tipoServicio,
     origen,
     destino,
     tipologia,
@@ -309,14 +351,12 @@ function calcularCotizacionTrayecto(params: ParametrosCotizacionTrayecto): Cotiz
     tarifaKmAplicada,
     subtotalKm,
     peajes,
-    horasMinimas: 0,
-    horasContratadas: 0,
-    horasAdicionales: 0,
-    valorHoraAdicional: 0,
-    paqueteBase: 0,
-    subtotalHoras: 0,
+    ...CAMPOS_HORAS_VACIOS,
+    ...CAMPOS_DISPONIBILIDAD_VACIOS,
     subtotalServicio: subtotalKm,
     ...recargos,
+    viaticosIncluidos: Boolean(params.viaticosConductor),
+    valorViaticos,
     restriccionZona,
     tarifaMinimaAplicada,
     total,
@@ -337,8 +377,9 @@ function calcularCotizacionPorHoras(params: ParametrosCotizacionPorHoras): Cotiz
   const subtotalHoras = paqueteBase + horasAdicionales * tarifaHoras.valorHoraAdicional;
 
   const recargos = calcularRecargosPorFecha(subtotalHoras, origen, "", fecha, horaInicio);
+  const valorViaticos = calcularViaticos(params.viaticosConductor, 1);
 
-  const preTotal = subtotalHoras + recargos.totalRecargos;
+  const preTotal = subtotalHoras + recargos.totalRecargos + valorViaticos;
   // El paquete base ya funciona como piso: no hay una "tarifa mínima" adicional que comparar.
   const total = redondearMil(preTotal);
 
@@ -352,20 +393,18 @@ function calcularCotizacionPorHoras(params: ParametrosCotizacionPorHoras): Cotiz
     fecha,
     horaInicio,
     horaFin,
-    kmIda: 0,
-    kmTotales: 0,
-    tramo: null,
-    tarifaKmAplicada: 0,
-    subtotalKm: 0,
-    peajes: 0,
+    ...CAMPOS_TRAYECTO_VACIOS,
     horasMinimas,
     horasContratadas,
     horasAdicionales,
     valorHoraAdicional: tarifaHoras.valorHoraAdicional,
     paqueteBase,
     subtotalHoras,
+    ...CAMPOS_DISPONIBILIDAD_VACIOS,
     subtotalServicio: subtotalHoras,
     ...recargos,
+    viaticosIncluidos: Boolean(params.viaticosConductor),
+    valorViaticos,
     restriccionZona,
     tarifaMinimaAplicada: false,
     total,
@@ -373,14 +412,61 @@ function calcularCotizacionPorHoras(params: ParametrosCotizacionPorHoras): Cotiz
 }
 
 /**
- * Calcula la cotización completa para un servicio, sea por trayecto (km) o
- * por tiempo (horas / día de sol) — ver `params.tipoServicio`.
- * En trayecto, `params.peajeIda` debe ser el peaje base (vehículo liviano);
- * esta función aplica el multiplicador ×1.8 para buseta/busetón/bus.
+ * "Disponibilidad completa": el vehículo queda a disposición varios días
+ * para distintos recorridos (no una ruta fija) — típico de tours de varios
+ * días. Se cobra como N días × la tarifa diaria de "día de sol".
+ */
+function calcularCotizacionDisponibilidad(params: ParametrosCotizacionDisponibilidad): Cotizacion {
+  const { origen, tipologia, horaInicio, fecha, numeroDias } = params;
+
+  const dias = Math.max(1, Math.round(numeroDias));
+  const valorPorDia = TARIFA_POR_HORAS[tipologia].paqueteDiaSol;
+  const subtotalDisponibilidad = valorPorDia * dias;
+
+  const recargos = calcularRecargosPorFecha(subtotalDisponibilidad, origen, "", fecha, horaInicio);
+  const valorViaticos = calcularViaticos(params.viaticosConductor, dias);
+
+  const preTotal = subtotalDisponibilidad + recargos.totalRecargos + valorViaticos;
+  const total = redondearMil(preTotal);
+
+  const restriccionZona = detectarRestriccion(params.direccion, origen, tipologia);
+
+  return {
+    tipoServicio: "disponibilidad_completa",
+    origen,
+    destino: "",
+    tipologia,
+    fecha,
+    horaInicio,
+    horaFin: null,
+    ...CAMPOS_TRAYECTO_VACIOS,
+    ...CAMPOS_HORAS_VACIOS,
+    numeroDias: dias,
+    valorPorDia,
+    subtotalDisponibilidad,
+    subtotalServicio: subtotalDisponibilidad,
+    ...recargos,
+    viaticosIncluidos: Boolean(params.viaticosConductor),
+    valorViaticos,
+    restriccionZona,
+    tarifaMinimaAplicada: false,
+    total,
+  };
+}
+
+/**
+ * Calcula la cotización completa para un servicio, según `params.tipoServicio`:
+ * trayecto (sencillo o ida-regreso, por km), por horas / día de sol (por
+ * tiempo), o disponibilidad completa (por día). En trayecto, `params.peajeIda`
+ * debe ser el peaje base (vehículo liviano); esta función aplica el
+ * multiplicador ×1.8 para buseta/busetón/bus.
  */
 export function calcularCotizacion(params: ParametrosCotizacion): Cotizacion {
-  if (params.tipoServicio === "trayecto") {
+  if (params.tipoServicio === "trayecto" || params.tipoServicio === "trayecto_ida_regreso") {
     return calcularCotizacionTrayecto(params);
+  }
+  if (params.tipoServicio === "disponibilidad_completa") {
+    return calcularCotizacionDisponibilidad(params);
   }
   return calcularCotizacionPorHoras(params);
 }

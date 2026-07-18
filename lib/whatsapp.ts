@@ -12,16 +12,29 @@ function formatoFecha(fecha: string): string {
   return `${dia}/${mes}/${anio}`;
 }
 
+function lineaDuracion(cotizacion: Cotizacion): string {
+  switch (cotizacion.tipoServicio) {
+    case "trayecto":
+      return `Distancia: ${cotizacion.kmIda} km, un solo sentido`;
+    case "trayecto_ida_regreso":
+      return `Distancia: ${cotizacion.kmIda} km (ida) · ${cotizacion.kmTotales} km totales`;
+    case "dia_sol":
+    case "por_horas":
+      return `${cotizacion.tipoServicio === "dia_sol" ? "Día de sol" : "Por horas"}: ${cotizacion.horasContratadas} horas (mínimo ${cotizacion.horasMinimas})`;
+    case "disponibilidad_completa":
+      return `Disponibilidad completa: ${cotizacion.numeroDias} día(s)`;
+  }
+}
+
 export function mensajeCotizacion(cotizacion: Cotizacion): string {
   const tipologia = TARIFAS_KM[cotizacion.tipologia];
-  const esTrayecto = cotizacion.tipoServicio === "trayecto";
+  const esTrayecto =
+    cotizacion.tipoServicio === "trayecto" || cotizacion.tipoServicio === "trayecto_ida_regreso";
   const lineas = [
     `*Cotización RutaClara*`,
     esTrayecto ? `${cotizacion.origen} → ${cotizacion.destino}` : cotizacion.origen,
     `Vehículo: ${tipologia.nombre}`,
-    esTrayecto
-      ? `Distancia: ${cotizacion.kmIda} km (ida) · ${cotizacion.kmTotales} km totales`
-      : `${cotizacion.tipoServicio === "dia_sol" ? "Día de sol" : "Por horas"}: ${cotizacion.horasContratadas} horas (mínimo ${cotizacion.horasMinimas})`,
+    lineaDuracion(cotizacion),
     cotizacion.restriccionZona
       ? `⚠ No puede ingresar a ${cotizacion.restriccionZona.zona}`
       : null,
@@ -32,6 +45,7 @@ export function mensajeCotizacion(cotizacion: Cotizacion): string {
     cotizacion.evento
       ? `Incluye recargo por ${cotizacion.evento.nombre} (${Math.round(cotizacion.evento.recargo * 100)}%)`
       : null,
+    cotizacion.viaticosIncluidos ? `Incluye alimentación y hospedaje del conductor` : null,
     `*Valor: ${formatoMoneda(cotizacion.total)}*`,
     ``,
     `Tarifa de referencia del mercado — Antioquia 2026.`,

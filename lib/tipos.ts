@@ -62,11 +62,19 @@ export interface ResultadoDistancia {
 
 /**
  * Tipo de servicio, cada uno con un modelo de precio distinto:
- *  - trayecto: origen → destino, precio por distancia (km).
- *  - por_horas: vehículo contratado por horas dentro de una zona, mínimo 4h.
- *  - dia_sol: jornada completa, mínimo 9h.
+ *  - trayecto: origen → destino, un solo sentido (no incluye el regreso del vehículo).
+ *  - trayecto_ida_regreso: origen → destino, el vehículo vuelve (peajes de ida y regreso).
+ *  - dia_sol: jornada completa en una zona, mínimo 9h.
+ *  - por_horas: vehículo contratado por horas en una zona, mínimo 4h.
+ *  - disponibilidad_completa: vehículo disponible varios días para distintos recorridos
+ *    (ej. un tour de varios días), se cobra por día.
  */
-export type TipoServicio = "trayecto" | "por_horas" | "dia_sol";
+export type TipoServicio =
+  | "trayecto"
+  | "trayecto_ida_regreso"
+  | "dia_sol"
+  | "por_horas"
+  | "disponibilidad_completa";
 
 interface ParametrosCotizacionBase {
   tipologia: TipologiaId;
@@ -74,10 +82,15 @@ interface ParametrosCotizacionBase {
   horaInicio: string;
   /** Fecha del servicio en formato "YYYY-MM-DD" (define festivo/fin de semana/evento). */
   fecha: string;
+  /**
+   * "Todo costo": si el operador cubre alimentación y hospedaje del conductor
+   * (en vez de que corra por cuenta del cliente), se suma un viático diario.
+   */
+  viaticosConductor?: boolean;
 }
 
 export interface ParametrosCotizacionTrayecto extends ParametrosCotizacionBase {
-  tipoServicio: "trayecto";
+  tipoServicio: "trayecto" | "trayecto_ida_regreso";
   origen: string;
   destino: string;
   kmIda: number;
@@ -97,7 +110,20 @@ export interface ParametrosCotizacionPorHoras extends ParametrosCotizacionBase {
   direccion?: string;
 }
 
-export type ParametrosCotizacion = ParametrosCotizacionTrayecto | ParametrosCotizacionPorHoras;
+export interface ParametrosCotizacionDisponibilidad extends ParametrosCotizacionBase {
+  tipoServicio: "disponibilidad_completa";
+  /** Ciudad/municipio base desde donde opera el vehículo. */
+  origen: string;
+  /** Cantidad de días que el vehículo queda disponible. */
+  numeroDias: number;
+  /** Dirección exacta o zona (opcional) — se usa solo para verificar restricción de acceso. */
+  direccion?: string;
+}
+
+export type ParametrosCotizacion =
+  | ParametrosCotizacionTrayecto
+  | ParametrosCotizacionPorHoras
+  | ParametrosCotizacionDisponibilidad;
 
 /** Evento o temporada alta de una ciudad que incrementa la demanda (y el precio). */
 export interface EventoCiudad {
@@ -136,7 +162,7 @@ export interface Cotizacion {
   subtotalKm: number;
   peajes: number;
 
-  // --- Por horas / día de sol (0 cuando tipoServicio es "trayecto") ---
+  // --- Por horas / día de sol (0 cuando no aplica) ---
   horasMinimas: number;
   horasContratadas: number;
   horasAdicionales: number;
@@ -144,7 +170,12 @@ export interface Cotizacion {
   paqueteBase: number;
   subtotalHoras: number;
 
-  /** Base sobre la que se calculan los recargos porcentuales: subtotalKm o subtotalHoras. */
+  // --- Disponibilidad completa (0 cuando no aplica) ---
+  numeroDias: number;
+  valorPorDia: number;
+  subtotalDisponibilidad: number;
+
+  /** Base sobre la que se calculan los recargos porcentuales (subtotalKm, subtotalHoras o subtotalDisponibilidad). */
   subtotalServicio: number;
 
   aplicaRecargoNocturno: boolean;
@@ -156,6 +187,10 @@ export interface Cotizacion {
   recargoFinDeSemanaFestivoValor: number;
   evento: EventoCiudad | null;
   recargoEventoValor: number;
+
+  /** "Todo costo": alimentación y hospedaje del conductor, cobrados aparte (no llevan recargo %). */
+  viaticosIncluidos: boolean;
+  valorViaticos: number;
 
   /** Alerta operativa (no cambia el precio): la tipología elegida no puede entrar a esa zona. */
   restriccionZona: RestriccionZona | null;

@@ -108,28 +108,51 @@ reales del gremio en Antioquia, 2026, cargados en `lib/tarifas.ts` y
 
 ## Tipos de servicio
 
-El cotizador soporta tres modelos de precio (`TipoServicio` en `lib/tipos.ts`),
-elegidos con el selector de arriba del formulario:
+El cotizador soporta cinco tipos de servicio (`TipoServicio` en
+`lib/tipos.ts`), elegidos con el dropdown de arriba del formulario — cada uno
+con su propio modelo de precio:
 
-- **Trayecto.** El modelo de toda la vida: origen → destino, precio por
-  distancia (la lógica de arriba).
-- **Por horas.** El vehículo queda contratado por tiempo dentro de una zona,
-  no por una ruta fija. Mínimo **4 horas**, cobradas como un paquete fijo
-  (`TARIFA_POR_HORAS[tipología].paquete4Horas`); cada hora que exceda el
-  mínimo se cobra aparte (`valorHoraAdicional`). No se cobran peajes, porque
-  no hay una ruta definida.
-- **Día de sol.** Igual que "por horas" pero con mínimo **9 horas**
-  (`paqueteDiaSol`) y el mismo valor de hora adicional.
+- **Trayecto.** Origen → destino, un solo sentido: cobra el peaje solo de
+  ida y muestra el km de ida como "distancia total" (el regreso del vehículo
+  no forma parte de esta reserva).
+- **Trayecto ida y regreso.** Igual, pero el vehículo vuelve: cobra el peaje
+  ida y regreso (`× 2`) y muestra `kmTotales = kmIda × 2`. Es el modelo que
+  usa el tablero cuando se publica un servicio desde el cotizador (siempre
+  asume que el vehículo vuelve).
+- **Día de sol.** El vehículo queda contratado por tiempo dentro de una
+  zona (no una ruta fija), mínimo **9 horas**, cobradas como un paquete fijo
+  (`TARIFA_POR_HORAS[tipología].paqueteDiaSol`); cada hora que exceda el
+  mínimo se cobra aparte (`valorHoraAdicional`). No se cobran peajes.
+- **Servicio por horas.** Igual que "día de sol" pero con mínimo **4 horas**
+  (`paquete4Horas`).
+- **Disponibilidad completa.** El vehículo queda a disposición varios días
+  para distintos recorridos (no una ruta fija) — pensado para tours de
+  varios días (ej. Cartagena). Se cobra como **número de días × la tarifa
+  diaria de "día de sol"** (`paqueteDiaSol`, reutilizada — no hay una tabla
+  aparte). Pide un campo adicional de "número de días" en vez de hora final.
 
-En los tres casos, la hora de inicio y la fecha se usan para calcular los
+En los cinco casos, la hora de inicio y la fecha se usan para calcular los
 mismos recargos (nocturno, fin de semana/festivo, evento) sobre el subtotal
-del servicio (`subtotalKm` o `subtotalHoras`, según el modelo). Las horas se
-calculan con `calcularHorasContratadas()` a partir de hora inicio/fin — una
-fracción de hora se redondea hacia arriba, y si el usuario pide menos del
-mínimo, se cobra igual el mínimo (con aviso en pantalla).
+del servicio (`subtotalKm`, `subtotalHoras` o `subtotalDisponibilidad`, según
+el modelo). Las horas se calculan con `calcularHorasContratadas()` a partir
+de hora inicio/fin — una fracción de hora se redondea hacia arriba, y si el
+usuario pide menos del mínimo, se cobra igual el mínimo (con aviso en
+pantalla).
 
 Los valores del paquete y la hora adicional están en `TARIFA_POR_HORAS`
 (`lib/tarifas.ts`) — son ilustrativos, ajústalos a lo que cobra el gremio.
+
+### "Todo costo": alimentación y hospedaje del conductor
+
+En viajes largos (otra región, varios días) suele discutirse si el operador
+cubre la comida y el hospedaje del conductor ("todo costo") o si eso corre
+por cuenta del cliente aparte. El cotizador tiene una casilla "Incluir
+alimentación y hospedaje del conductor" disponible en los cinco tipos de
+servicio — si se marca, se suma un viático fijo por día
+(`VIATICOS_CONDUCTOR_DIA` en `lib/tarifas.ts`, hoy $90.000/día) como un costo
+de paso (como los peajes: no lleva recargo porcentual de festivo/evento). En
+trayecto/por horas/día de sol se cuenta como 1 día; en disponibilidad
+completa se multiplica por el número de días.
 
 ## Qué está simulado (y cómo conectar lo real después)
 
