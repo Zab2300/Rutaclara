@@ -89,8 +89,7 @@ interface ParametrosCotizacionBase {
   viaticosConductor?: boolean;
 }
 
-export interface ParametrosCotizacionTrayecto extends ParametrosCotizacionBase {
-  tipoServicio: "trayecto" | "trayecto_ida_regreso";
+interface ParametrosCotizacionTrayectoBase extends ParametrosCotizacionBase {
   origen: string;
   destino: string;
   kmIda: number;
@@ -99,6 +98,23 @@ export interface ParametrosCotizacionTrayecto extends ParametrosCotizacionBase {
   direccionOrigen?: string;
   direccionDestino?: string;
 }
+
+// Nota: cada variante tiene un único valor literal en `tipoServicio` (no una
+// unión de dos), a propósito — así TypeScript puede excluir el tipo completo
+// al narrowear `ParametrosCotizacion` por descarte (ver calcularCotizacion()
+// en lib/tarifas.ts). Un discriminante con dos valores en una sola interfaz
+// rompe ese narrowing y no compila.
+export interface ParametrosCotizacionTrayectoSencillo extends ParametrosCotizacionTrayectoBase {
+  tipoServicio: "trayecto";
+}
+
+export interface ParametrosCotizacionTrayectoIdaRegreso extends ParametrosCotizacionTrayectoBase {
+  tipoServicio: "trayecto_ida_regreso";
+}
+
+export type ParametrosCotizacionTrayecto =
+  | ParametrosCotizacionTrayectoSencillo
+  | ParametrosCotizacionTrayectoIdaRegreso;
 
 export interface ParametrosCotizacionPorHoras extends ParametrosCotizacionBase {
   tipoServicio: "por_horas" | "dia_sol";
