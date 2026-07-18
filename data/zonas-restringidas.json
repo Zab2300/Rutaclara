@@ -1,0 +1,37 @@
+[
+  {
+    "municipio": "Medellín",
+    "zona": "El Poblado — Parque Lleras / Zona Rosa",
+    "claves": ["parque lleras", "zona rosa", "provenza", "lleras"],
+    "motivo": "Restricción de circulación por alta congestión y espacio vial reducido.",
+    "tipologiasRestringidas": ["buseta", "buseton", "bus"]
+  },
+  {
+    "municipio": "Medellín",
+    "zona": "Laureles — Circulares",
+    "claves": ["circular 1", "circular 2", "circular primera", "circular segunda"],
+    "motivo": "Vías residenciales angostas, acceso restringido para vehículos grandes.",
+    "tipologiasRestringidas": ["buseton", "bus"]
+  },
+  {
+    "municipio": "Santa Fe de Antioquia",
+    "zona": "Centro histórico",
+    "claves": ["centro historico", "parque principal", "catedral"],
+    "motivo": "Calles coloniales angostas, zona patrimonio — acceso restringido para vehículos grandes.",
+    "tipologiasRestringidas": ["buseta", "buseton", "bus"]
+  },
+  {
+    "municipio": "Guatapé",
+    "zona": "Centro / Malecón",
+    "claves": ["malecon", "centro", "calle del recuerdo", "zocalos"],
+    "motivo": "Calles angostas de alta afluencia peatonal y turística.",
+    "tipologiasRestringidas": ["buseton", "bus"]
+  },
+  {
+    "municipio": "Jardín",
+    "zona": "Parque principal",
+    "claves": ["parque principal", "centro"],
+    "motivo": "Pueblo patrimonio con calles angostas — acceso restringido para vehículos grandes.",
+    "tipologiasRestringidas": ["buseta", "buseton", "bus"]
+  }
+]

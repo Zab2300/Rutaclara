@@ -4,30 +4,44 @@
  * Funciones puras (sin efectos secundarios, sin fetch, sin estado) para que
  * sean fáciles de testear. Toda la lógica de negocio del cotizador vive aquí.
  *
- * Lógica del cálculo (ver README.md para el detalle completo):
+ * Hay dos modelos de precio, ver README.md para el detalle completo:
+ *
+ * A) TRAYECTO (origen → destino, por distancia)
  *  1. El tramo de tarifa se determina con el km DE IDA (no el total).
  *  2. subtotalKm = km_ida × $/km del tramo — el $/km del listado ya está
  *     pensado sobre el km de ida, así cotiza el mercado hoy.
  *  3. Los peajes se cobran ida y regreso: peaje_ida × 2.
- *  4. Recargos sobre el subtotalKm (el valor del servicio en sí, no sobre
- *     los peajes que son un costo de paso fijo), todos independientes y
- *     acumulables entre sí:
- *       - Nocturno (30%): hora de inicio entre 8:00 p.m. y 6:00 a.m.
- *       - Fin de semana/festivo (20%): sábado, domingo o festivo colombiano
- *         (mayor ocupación de los vehículos disponibles).
- *       - Evento/temporada alta (varía por evento): ferias o fiestas
- *         conocidas en el origen o destino en esas fechas.
- *  5. Se compara contra la tarifa mínima de la tipología; si el cálculo da
- *     menos, se usa la mínima.
- *  6. El total se redondea al múltiplo de $1.000 más cercano.
+ *
+ * B) POR HORAS / DÍA DE SOL (vehículo contratado por tiempo)
+ *  1. Por horas: mínimo 4 horas. Día de sol: mínimo 9 horas.
+ *  2. paqueteBase = precio fijo del mínimo (TARIFA_POR_HORAS).
+ *  3. Las horas que excedan el mínimo se cobran aparte:
+ *     horasAdicionales × valorHoraAdicional.
+ *  4. No se cobran peajes (no hay una ruta fija definida).
+ *
+ * En ambos casos, sobre el "subtotal del servicio" (subtotalKm o
+ * subtotalHoras) se acumulan los mismos recargos porcentuales:
+ *   - Nocturno (30%): hora de inicio entre 8:00 p.m. y 6:00 a.m.
+ *   - Fin de semana/festivo (20%): sábado, domingo o festivo colombiano.
+ *   - Evento/temporada alta (varía por evento): ferias o fiestas conocidas
+ *     en el origen o destino en esas fechas.
+ * Luego se compara contra la tarifa/paquete mínimo, y el total se redondea
+ * al múltiplo de $1.000 más cercano.
+ *
+ * Además, si se indica una dirección exacta, se verifica si la tipología
+ * elegida tiene restricción de acceso en esa zona (lib/direcciones.ts) —
+ * esto es solo informativo, no cambia el precio.
  */
 
+import { detectarRestriccion } from "./direcciones";
 import { buscarEventoAplicable } from "./eventos";
 import { consultarFestivo, esFinDeSemana } from "./festivos";
 import type {
   Cotizacion,
   IndiceTramo,
   ParametrosCotizacion,
+  ParametrosCotizacionPorHoras,
+  ParametrosCotizacionTrayecto,
   Tipologia,
   TipologiaId,
 } from "./tipos";
@@ -99,7 +113,7 @@ export const TARIFAS_KM: Record<TipologiaId, Tipologia> = {
   },
 };
 
-/** Tarifa mínima por servicio, evita cotizaciones absurdas en trayectos muy cortos. */
+/** Tarifa mínima por servicio de trayecto, evita cotizaciones absurdas en tramos muy cortos. */
 export const TARIFA_MINIMA: Record<TipologiaId, number> = {
   automovil: 90000,
   campero: 120000,
@@ -111,6 +125,35 @@ export const TARIFA_MINIMA: Record<TipologiaId, number> = {
   buseta: 200000,
   buseton: 220000,
   bus: 250000,
+};
+
+/** Horas mínimas por tipo de servicio contratado por tiempo. */
+export const HORAS_MINIMAS: Record<"por_horas" | "dia_sol", number> = {
+  por_horas: 4,
+  dia_sol: 9,
+};
+
+interface TarifaPorHoras {
+  /** Precio fijo por las horas mínimas del servicio "por horas" (4h). */
+  paquete4Horas: number;
+  /** Precio fijo por las horas mínimas del servicio "día de sol" (9h). */
+  paqueteDiaSol: number;
+  /** Valor de cada hora que exceda el mínimo del paquete elegido. */
+  valorHoraAdicional: number;
+}
+
+/** Tarifas por tiempo (Antioquia, 2026): vehículo contratado por horas, no por ruta. */
+export const TARIFA_POR_HORAS: Record<TipologiaId, TarifaPorHoras> = {
+  automovil: { paquete4Horas: 140000, paqueteDiaSol: 260000, valorHoraAdicional: 25000 },
+  campero: { paquete4Horas: 170000, paqueteDiaSol: 310000, valorHoraAdicional: 30000 },
+  camioneta_sw: { paquete4Horas: 160000, paqueteDiaSol: 290000, valorHoraAdicional: 28000 },
+  doble_cabina: { paquete4Horas: 180000, paqueteDiaSol: 330000, valorHoraAdicional: 32000 },
+  van8: { paquete4Horas: 190000, paqueteDiaSol: 360000, valorHoraAdicional: 35000 },
+  van15: { paquete4Horas: 230000, paqueteDiaSol: 450000, valorHoraAdicional: 45000 },
+  van19: { paquete4Horas: 280000, paqueteDiaSol: 540000, valorHoraAdicional: 55000 },
+  buseta: { paquete4Horas: 340000, paqueteDiaSol: 650000, valorHoraAdicional: 65000 },
+  buseton: { paquete4Horas: 380000, paqueteDiaSol: 720000, valorHoraAdicional: 72000 },
+  bus: { paquete4Horas: 420000, paqueteDiaSol: 800000, valorHoraAdicional: 80000 },
 };
 
 /** Recargo nocturno: 20:00 a 06:00. */
@@ -170,11 +213,65 @@ export function formatoMoneda(valor: number): string {
 }
 
 /**
- * Calcula la cotización completa para un servicio.
- * `params.peajeIda` debe ser el peaje base (vehículo liviano); esta función
- * aplica el multiplicador ×1.8 para buseta/busetón/bus automáticamente.
+ * Calcula cuántas horas cubre un servicio "por horas"/"día de sol" a partir
+ * de la hora de inicio y fin ("HH:mm"). Si la hora de fin es menor o igual a
+ * la de inicio, se asume que cruza la medianoche. Las horas parciales se
+ * redondean hacia arriba (una fracción de hora se cobra como hora completa).
  */
-export function calcularCotizacion(params: ParametrosCotizacion): Cotizacion {
+export function calcularHorasContratadas(horaInicio: string, horaFin: string): number {
+  const [horaIni, minIni] = horaInicio.split(":").map(Number);
+  const [horaFinN, minFin] = horaFin.split(":").map(Number);
+  const minutosInicio = horaIni * 60 + minIni;
+  let minutosFin = horaFinN * 60 + minFin;
+  if (minutosFin <= minutosInicio) minutosFin += 24 * 60;
+  return Math.ceil((minutosFin - minutosInicio) / 60);
+}
+
+// ---------------------------------------------------------------------------
+// Recargos comunes (nocturno, fin de semana/festivo, evento) — comparten
+// lógica entre los dos modelos de precio.
+// ---------------------------------------------------------------------------
+
+function calcularRecargosPorFecha(
+  subtotalServicio: number,
+  origen: string,
+  destino: string,
+  fecha: string,
+  horaInicio: string
+) {
+  const aplicaRecargoNocturno = esHorarioNocturno(horaInicio);
+  const recargoNocturnoValor = aplicaRecargoNocturno
+    ? Math.round(subtotalServicio * RECARGO_NOCTURNO)
+    : 0;
+
+  const infoFestivo = consultarFestivo(fecha);
+  const esFinDeSemanaFecha = esFinDeSemana(fecha);
+  const aplicaRecargoFinDeSemanaFestivo = esFinDeSemanaFecha || infoFestivo.esFestivo;
+  const recargoFinDeSemanaFestivoValor = aplicaRecargoFinDeSemanaFestivo
+    ? Math.round(subtotalServicio * RECARGO_FIN_DE_SEMANA_FESTIVO)
+    : 0;
+
+  const evento = buscarEventoAplicable(origen, destino, fecha);
+  const recargoEventoValor = evento ? Math.round(subtotalServicio * evento.recargo) : 0;
+
+  const totalRecargos =
+    recargoNocturnoValor + recargoFinDeSemanaFestivoValor + recargoEventoValor;
+
+  return {
+    aplicaRecargoNocturno,
+    recargoNocturnoValor,
+    esFinDeSemana: esFinDeSemanaFecha,
+    esFestivo: infoFestivo.esFestivo,
+    nombreFestivo: infoFestivo.nombre,
+    aplicaRecargoFinDeSemanaFestivo,
+    recargoFinDeSemanaFestivoValor,
+    evento,
+    recargoEventoValor,
+    totalRecargos,
+  };
+}
+
+function calcularCotizacionTrayecto(params: ParametrosCotizacionTrayecto): Cotizacion {
   const { origen, destino, kmIda, peajeIda, tipologia, horaInicio, fecha } = params;
 
   const tipologiaData = TARIFAS_KM[tipologia];
@@ -187,53 +284,103 @@ export function calcularCotizacion(params: ParametrosCotizacion): Cotizacion {
   const peajeIdaAjustado = peajeParaTipologia(peajeIda, tipologia);
   const peajes = peajeIdaAjustado * 2;
 
-  const aplicaRecargoNocturno = esHorarioNocturno(horaInicio);
-  const recargoNocturnoValor = aplicaRecargoNocturno
-    ? Math.round(subtotalKm * RECARGO_NOCTURNO)
-    : 0;
+  const recargos = calcularRecargosPorFecha(subtotalKm, origen, destino, fecha, horaInicio);
 
-  const infoFestivo = consultarFestivo(fecha);
-  const esFinDeSemanaFecha = esFinDeSemana(fecha);
-  const aplicaRecargoFinDeSemanaFestivo = esFinDeSemanaFecha || infoFestivo.esFestivo;
-  const recargoFinDeSemanaFestivoValor = aplicaRecargoFinDeSemanaFestivo
-    ? Math.round(subtotalKm * RECARGO_FIN_DE_SEMANA_FESTIVO)
-    : 0;
-
-  const evento = buscarEventoAplicable(origen, destino, fecha);
-  const recargoEventoValor = evento ? Math.round(subtotalKm * evento.recargo) : 0;
-
-  const preTotal =
-    subtotalKm +
-    peajes +
-    recargoNocturnoValor +
-    recargoFinDeSemanaFestivoValor +
-    recargoEventoValor;
+  const preTotal = subtotalKm + peajes + recargos.totalRecargos;
   const minima = TARIFA_MINIMA[tipologia];
   const tarifaMinimaAplicada = preTotal < minima;
-
   const total = redondearMil(tarifaMinimaAplicada ? minima : preTotal);
 
+  const restriccionZona =
+    detectarRestriccion(params.direccionOrigen, origen, tipologia) ??
+    detectarRestriccion(params.direccionDestino, destino, tipologia);
+
   return {
+    tipoServicio: "trayecto",
     origen,
     destino,
     tipologia,
     fecha,
+    horaInicio,
+    horaFin: null,
     kmIda,
     kmTotales,
     tramo,
     tarifaKmAplicada,
     subtotalKm,
     peajes,
-    aplicaRecargoNocturno,
-    recargoNocturnoValor,
-    esFinDeSemana: esFinDeSemanaFecha,
-    esFestivo: infoFestivo.esFestivo,
-    nombreFestivo: infoFestivo.nombre,
-    aplicaRecargoFinDeSemanaFestivo,
-    recargoFinDeSemanaFestivoValor,
-    evento,
-    recargoEventoValor,
+    horasMinimas: 0,
+    horasContratadas: 0,
+    horasAdicionales: 0,
+    valorHoraAdicional: 0,
+    paqueteBase: 0,
+    subtotalHoras: 0,
+    subtotalServicio: subtotalKm,
+    ...recargos,
+    restriccionZona,
     tarifaMinimaAplicada,
     total,
   };
+}
+
+function calcularCotizacionPorHoras(params: ParametrosCotizacionPorHoras): Cotizacion {
+  const { tipoServicio, origen, tipologia, horaInicio, horaFin, fecha } = params;
+
+  const tarifaHoras = TARIFA_POR_HORAS[tipologia];
+  const horasMinimas = HORAS_MINIMAS[tipoServicio];
+  const paqueteBase =
+    tipoServicio === "dia_sol" ? tarifaHoras.paqueteDiaSol : tarifaHoras.paquete4Horas;
+
+  const horasSolicitadas = calcularHorasContratadas(horaInicio, horaFin);
+  const horasContratadas = Math.max(horasSolicitadas, horasMinimas);
+  const horasAdicionales = horasContratadas - horasMinimas;
+  const subtotalHoras = paqueteBase + horasAdicionales * tarifaHoras.valorHoraAdicional;
+
+  const recargos = calcularRecargosPorFecha(subtotalHoras, origen, "", fecha, horaInicio);
+
+  const preTotal = subtotalHoras + recargos.totalRecargos;
+  // El paquete base ya funciona como piso: no hay una "tarifa mínima" adicional que comparar.
+  const total = redondearMil(preTotal);
+
+  const restriccionZona = detectarRestriccion(params.direccion, origen, tipologia);
+
+  return {
+    tipoServicio,
+    origen,
+    destino: "",
+    tipologia,
+    fecha,
+    horaInicio,
+    horaFin,
+    kmIda: 0,
+    kmTotales: 0,
+    tramo: null,
+    tarifaKmAplicada: 0,
+    subtotalKm: 0,
+    peajes: 0,
+    horasMinimas,
+    horasContratadas,
+    horasAdicionales,
+    valorHoraAdicional: tarifaHoras.valorHoraAdicional,
+    paqueteBase,
+    subtotalHoras,
+    subtotalServicio: subtotalHoras,
+    ...recargos,
+    restriccionZona,
+    tarifaMinimaAplicada: false,
+    total,
+  };
+}
+
+/**
+ * Calcula la cotización completa para un servicio, sea por trayecto (km) o
+ * por tiempo (horas / día de sol) — ver `params.tipoServicio`.
+ * En trayecto, `params.peajeIda` debe ser el peaje base (vehículo liviano);
+ * esta función aplica el multiplicador ×1.8 para buseta/busetón/bus.
+ */
+export function calcularCotizacion(params: ParametrosCotizacion): Cotizacion {
+  if (params.tipoServicio === "trayecto") {
+    return calcularCotizacionTrayecto(params);
+  }
+  return calcularCotizacionPorHoras(params);
 }

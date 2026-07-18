@@ -60,11 +60,15 @@ export interface ResultadoDistancia {
 // Cotización
 // ---------------------------------------------------------------------------
 
-export interface ParametrosCotizacion {
-  origen: string;
-  destino: string;
-  kmIda: number;
-  peajeIda: number;
+/**
+ * Tipo de servicio, cada uno con un modelo de precio distinto:
+ *  - trayecto: origen → destino, precio por distancia (km).
+ *  - por_horas: vehículo contratado por horas dentro de una zona, mínimo 4h.
+ *  - dia_sol: jornada completa, mínimo 9h.
+ */
+export type TipoServicio = "trayecto" | "por_horas" | "dia_sol";
+
+interface ParametrosCotizacionBase {
   tipologia: TipologiaId;
   /** Hora de inicio del servicio en formato "HH:mm", 24 horas. */
   horaInicio: string;
@@ -72,27 +76,77 @@ export interface ParametrosCotizacion {
   fecha: string;
 }
 
+export interface ParametrosCotizacionTrayecto extends ParametrosCotizacionBase {
+  tipoServicio: "trayecto";
+  origen: string;
+  destino: string;
+  kmIda: number;
+  peajeIda: number;
+  /** Dirección exacta (opcional) — se usa solo para verificar restricción de acceso por zona. */
+  direccionOrigen?: string;
+  direccionDestino?: string;
+}
+
+export interface ParametrosCotizacionPorHoras extends ParametrosCotizacionBase {
+  tipoServicio: "por_horas" | "dia_sol";
+  /** Ciudad/municipio donde opera el servicio. */
+  origen: string;
+  /** Hora en la que termina el servicio, formato "HH:mm". */
+  horaFin: string;
+  /** Dirección exacta o zona (opcional) — se usa solo para verificar restricción de acceso. */
+  direccion?: string;
+}
+
+export type ParametrosCotizacion = ParametrosCotizacionTrayecto | ParametrosCotizacionPorHoras;
+
 /** Evento o temporada alta de una ciudad que incrementa la demanda (y el precio). */
 export interface EventoCiudad {
   nombre: string;
   ciudad: string;
   fechaInicio: string; // "YYYY-MM-DD"
   fechaFin: string; // "YYYY-MM-DD"
-  /** Recargo adicional sobre el subtotal por distancia, ej. 0.25 = 25%. */
+  /** Recargo adicional sobre el subtotal del servicio, ej. 0.25 = 25%. */
   recargo: number;
 }
 
+/** Zona con restricción de acceso para ciertos tamaños de vehículo (ver lib/direcciones.ts). */
+export interface RestriccionZona {
+  zona: string;
+  municipio: string;
+  motivo: string;
+  tipologiasRestringidas: TipologiaId[];
+}
+
 export interface Cotizacion {
+  tipoServicio: TipoServicio;
   origen: string;
+  /** "" cuando el tipo de servicio es por_horas/dia_sol (no aplica destino fijo). */
   destino: string;
   tipologia: TipologiaId;
   fecha: string;
+  horaInicio: string;
+  /** Solo para por_horas/dia_sol. */
+  horaFin: string | null;
+
+  // --- Trayecto (0 cuando tipoServicio no es "trayecto") ---
   kmIda: number;
   kmTotales: number;
-  tramo: IndiceTramo;
+  tramo: IndiceTramo | null;
   tarifaKmAplicada: number;
   subtotalKm: number;
   peajes: number;
+
+  // --- Por horas / día de sol (0 cuando tipoServicio es "trayecto") ---
+  horasMinimas: number;
+  horasContratadas: number;
+  horasAdicionales: number;
+  valorHoraAdicional: number;
+  paqueteBase: number;
+  subtotalHoras: number;
+
+  /** Base sobre la que se calculan los recargos porcentuales: subtotalKm o subtotalHoras. */
+  subtotalServicio: number;
+
   aplicaRecargoNocturno: boolean;
   recargoNocturnoValor: number;
   esFinDeSemana: boolean;
@@ -102,6 +156,10 @@ export interface Cotizacion {
   recargoFinDeSemanaFestivoValor: number;
   evento: EventoCiudad | null;
   recargoEventoValor: number;
+
+  /** Alerta operativa (no cambia el precio): la tipología elegida no puede entrar a esa zona. */
+  restriccionZona: RestriccionZona | null;
+
   tarifaMinimaAplicada: boolean;
   total: number;
 }

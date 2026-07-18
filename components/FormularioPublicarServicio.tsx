@@ -68,6 +68,7 @@ export default function FormularioPublicarServicio({
     const distancia = obtenerDistanciaSync(origen, destino);
     if (!distancia) return null;
     return calcularCotizacion({
+      tipoServicio: "trayecto",
       origen,
       destino,
       kmIda: distancia.km,

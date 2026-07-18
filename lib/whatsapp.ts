@@ -14,11 +14,17 @@ function formatoFecha(fecha: string): string {
 
 export function mensajeCotizacion(cotizacion: Cotizacion): string {
   const tipologia = TARIFAS_KM[cotizacion.tipologia];
+  const esTrayecto = cotizacion.tipoServicio === "trayecto";
   const lineas = [
     `*Cotización RutaClara*`,
-    `${cotizacion.origen} → ${cotizacion.destino}`,
+    esTrayecto ? `${cotizacion.origen} → ${cotizacion.destino}` : cotizacion.origen,
     `Vehículo: ${tipologia.nombre}`,
-    `Distancia: ${cotizacion.kmIda} km (ida) · ${cotizacion.kmTotales} km totales`,
+    esTrayecto
+      ? `Distancia: ${cotizacion.kmIda} km (ida) · ${cotizacion.kmTotales} km totales`
+      : `${cotizacion.tipoServicio === "dia_sol" ? "Día de sol" : "Por horas"}: ${cotizacion.horasContratadas} horas (mínimo ${cotizacion.horasMinimas})`,
+    cotizacion.restriccionZona
+      ? `⚠ No puede ingresar a ${cotizacion.restriccionZona.zona}`
+      : null,
     cotizacion.aplicaRecargoNocturno ? `Incluye recargo nocturno (30%)` : null,
     cotizacion.aplicaRecargoFinDeSemanaFestivo
       ? `Incluye recargo ${cotizacion.esFestivo ? `festivo (${cotizacion.nombreFestivo})` : "fin de semana"} (20%)`

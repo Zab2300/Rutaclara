@@ -35,6 +35,7 @@ lib/
   tipos.ts             → Interfaces TypeScript de todo el dominio
   tarifas.ts           → Motor de cotización (funciones puras)
   distancias.ts        → Servicio de rutas/distancias, abstraído
+  direcciones.ts        → Restricción de acceso por zona/dirección, abstraído
   festivos.ts          → Calculadora de festivos colombianos (Ley Emiliani + Pascua)
   eventos.ts           → Búsqueda de eventos/temporada alta por ciudad y fecha
   whatsapp.ts          → Generación de mensajes y links de WhatsApp
@@ -45,6 +46,7 @@ data/
   transportador-demo.json → Transportador demo para /perfil
   beneficios.json        → Beneficios de afiliado demo
   eventos.json           → Eventos/temporada alta demo (ferias, carnavales)
+  zonas-restringidas.json → Zonas demo con restricción de acceso vehicular
 components/
   TarjetaServicio, InsigniaPagador, SemaforoDocumento,
   DesgloseCotizacion, SelectorTipologia, FormularioPublicarServicio,
@@ -104,6 +106,31 @@ Todos los valores de $/km, tarifas mínimas y rutas (km + peaje) son datos
 reales del gremio en Antioquia, 2026, cargados en `lib/tarifas.ts` y
 `lib/distancias.ts`.
 
+## Tipos de servicio
+
+El cotizador soporta tres modelos de precio (`TipoServicio` en `lib/tipos.ts`),
+elegidos con el selector de arriba del formulario:
+
+- **Trayecto.** El modelo de toda la vida: origen → destino, precio por
+  distancia (la lógica de arriba).
+- **Por horas.** El vehículo queda contratado por tiempo dentro de una zona,
+  no por una ruta fija. Mínimo **4 horas**, cobradas como un paquete fijo
+  (`TARIFA_POR_HORAS[tipología].paquete4Horas`); cada hora que exceda el
+  mínimo se cobra aparte (`valorHoraAdicional`). No se cobran peajes, porque
+  no hay una ruta definida.
+- **Día de sol.** Igual que "por horas" pero con mínimo **9 horas**
+  (`paqueteDiaSol`) y el mismo valor de hora adicional.
+
+En los tres casos, la hora de inicio y la fecha se usan para calcular los
+mismos recargos (nocturno, fin de semana/festivo, evento) sobre el subtotal
+del servicio (`subtotalKm` o `subtotalHoras`, según el modelo). Las horas se
+calculan con `calcularHorasContratadas()` a partir de hora inicio/fin — una
+fracción de hora se redondea hacia arriba, y si el usuario pide menos del
+mínimo, se cobra igual el mínimo (con aviso en pantalla).
+
+Los valores del paquete y la hora adicional están en `TARIFA_POR_HORAS`
+(`lib/tarifas.ts`) — son ilustrativos, ajústalos a lo que cobra el gremio.
+
 ## Qué está simulado (y cómo conectar lo real después)
 
 | Qué | Hoy (prototipo) | Cómo conectar lo real |
@@ -113,6 +140,7 @@ reales del gremio en Antioquia, 2026, cargados en `lib/tarifas.ts` y
 | **Autenticación** | No hay login. Un selector de "modo demo" (`components/ModoDemoContext.tsx`) guarda en `localStorage` si estás viendo la app como Publicador o Transportador, usando siempre el mismo publicador/transportador de ejemplo (`pub-1` / `trans-demo`). | Reemplazar por autenticación real (ej. NextAuth, Clerk, o un backend propio con JWT) y usar el usuario autenticado en vez de los IDs fijos `PUBLICADOR_DEMO_ID` / `TRANSPORTADOR_DEMO_ID`. |
 | **Pagos y garantía contra no-pago** | Solo se muestra la insignia de reputación (`InsigniaPagador`) y la etiqueta "Pago asegurado disponible" para publicadores nuevos — no hay flujo de pago real. | Integrar una pasarela de pagos (o un flujo de retención/escrow) que libere el pago al transportador cuando el publicador confirme el servicio completado. |
 | **Eventos / temporada alta** | Lista fija de 5 eventos ilustrativos en `data/eventos.json` (Feria de las Flores, Feria de Cali, Carnaval de Barranquilla, Feria de Manizales, Alumbrados) con fechas de 2026. | Reemplazar por una fuente mantenida (agenda cultural de cada alcaldía, o un calendario propio del gremio actualizado cada año), respetando la forma de `EventoCiudad` en `lib/tipos.ts`. |
+| **Dirección exacta y restricción de zona por tamaño de vehículo** | Los campos de dirección son texto libre (no autocomplete real). `lib/direcciones.ts` compara esa dirección contra una lista de 5 zonas conocidas con restricción (`data/zonas-restringidas.json`: El Poblado, Laureles, Santa Fe de Antioquia, Guatapé, Jardín) por coincidencia de palabra clave — no localiza el punto exacto en el mapa. | **Esto requiere una API key propia de Google Maps Platform (Places Autocomplete + Geocoding), con facturación habilitada en Google Cloud — no incluida en este prototipo.** Con la key: (1) reemplazar los inputs de dirección por el widget de Places Autocomplete para sugerir/validar direcciones reales; (2) usar Geocoding API para resolver la dirección escrita a lat/lng; (3) cruzar esas coordenadas contra polígonos reales de restricción vehicular (según el decreto de movilidad de cada municipio) en vez del emparejamiento por palabra clave. La forma de `RestriccionZona` en `lib/tipos.ts` ya está pensada para no cambiar cuando se haga ese reemplazo. |
 | **Notificación por WhatsApp** | Los botones "Compartir por WhatsApp" abren `wa.me` con el texto precargado — el usuario debe darle enviar manualmente. | Para notificaciones automáticas (sin acción del usuario) se necesitaría la API de WhatsApp Business (Meta Cloud API o Twilio). |
 | **Verificación de documentos (semáforo)** | Datos fijos en `data/transportador-demo.json`. | Conectar con el registro real de pólizas/SOAT/tarjeta de operación (manual al inicio, o vía un proveedor de verificación documental) y calcular `diasRestantes` desde la fecha de vencimiento real. |
 

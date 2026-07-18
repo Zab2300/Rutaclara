@@ -13,28 +13,76 @@ function Fila({ etiqueta, valor, sutil = false }: { etiqueta: string; valor: str
   );
 }
 
+const ETIQUETA_TIPO_SERVICIO: Record<Cotizacion["tipoServicio"], string> = {
+  trayecto: "Trayecto",
+  por_horas: "Por horas",
+  dia_sol: "Día de sol",
+};
+
 export default function DesgloseCotizacion({ cotizacion }: { cotizacion: Cotizacion }) {
   const tipologia = TARIFAS_KM[cotizacion.tipologia];
+  const esTrayecto = cotizacion.tipoServicio === "trayecto";
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-tarjeta">
-      <div className="mb-3 flex items-center gap-2 text-2xl font-extrabold text-rc-azul">
+      <div className="mb-1 flex items-center gap-2 text-2xl font-extrabold text-rc-azul">
         <span aria-hidden="true">{ICONO_TIPOLOGIA[cotizacion.tipologia]}</span>
-        <span className="text-xl">
-          {cotizacion.origen} <span className="text-rc-naranja">→</span> {cotizacion.destino}
-        </span>
+        {esTrayecto ? (
+          <span className="text-xl">
+            {cotizacion.origen} <span className="text-rc-naranja">→</span> {cotizacion.destino}
+          </span>
+        ) : (
+          <span className="text-xl">{cotizacion.origen}</span>
+        )}
       </div>
-      <p className="mb-4 text-sm font-semibold text-slate-500">{tipologia.nombre}</p>
+      <p className="mb-4 text-sm font-semibold text-slate-500">
+        {tipologia.nombre} · {ETIQUETA_TIPO_SERVICIO[cotizacion.tipoServicio]}
+      </p>
+
+      {cotizacion.restriccionZona && (
+        <p className="mb-4 rounded-xl bg-rc-rojo-claro px-3 py-2 text-sm font-semibold text-rc-rojo">
+          🚫 No puede ingresar a {cotizacion.restriccionZona.zona}. {cotizacion.restriccionZona.motivo}
+        </p>
+      )}
 
       <div className="divide-y divide-slate-100">
-        <Fila etiqueta="Distancia (ida)" valor={`${cotizacion.kmIda} km`} sutil />
-        <Fila etiqueta="Distancia total (ida y regreso)" valor={`${cotizacion.kmTotales} km`} sutil />
-        <Fila
-          etiqueta={`Valor por km aplicado`}
-          valor={`${formatoMoneda(cotizacion.tarifaKmAplicada)}/km`}
-        />
-        <Fila etiqueta="Subtotal por distancia" valor={formatoMoneda(cotizacion.subtotalKm)} />
-        <Fila etiqueta="Peajes (ida y regreso)" valor={formatoMoneda(cotizacion.peajes)} />
+        {esTrayecto ? (
+          <>
+            <Fila etiqueta="Distancia (ida)" valor={`${cotizacion.kmIda} km`} sutil />
+            <Fila
+              etiqueta="Distancia total (ida y regreso)"
+              valor={`${cotizacion.kmTotales} km`}
+              sutil
+            />
+            <Fila
+              etiqueta="Valor por km aplicado"
+              valor={`${formatoMoneda(cotizacion.tarifaKmAplicada)}/km`}
+            />
+            <Fila etiqueta="Subtotal por distancia" valor={formatoMoneda(cotizacion.subtotalKm)} />
+            <Fila etiqueta="Peajes (ida y regreso)" valor={formatoMoneda(cotizacion.peajes)} />
+          </>
+        ) : (
+          <>
+            <Fila
+              etiqueta="Horas contratadas"
+              valor={`${cotizacion.horasContratadas} h (mínimo ${cotizacion.horasMinimas} h)`}
+              sutil
+            />
+            <Fila
+              etiqueta={`Paquete mínimo (${cotizacion.horasMinimas} h)`}
+              valor={formatoMoneda(cotizacion.paqueteBase)}
+            />
+            {cotizacion.horasAdicionales > 0 && (
+              <Fila
+                etiqueta={`Horas adicionales (${cotizacion.horasAdicionales} × ${formatoMoneda(
+                  cotizacion.valorHoraAdicional
+                )})`}
+                valor={formatoMoneda(cotizacion.horasAdicionales * cotizacion.valorHoraAdicional)}
+              />
+            )}
+            <Fila etiqueta="Subtotal del servicio" valor={formatoMoneda(cotizacion.subtotalHoras)} />
+          </>
+        )}
         {cotizacion.aplicaRecargoNocturno && (
           <Fila
             etiqueta="Recargo nocturno (30%)"
