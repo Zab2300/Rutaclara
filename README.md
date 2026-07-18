@@ -129,15 +129,18 @@ con su propio modelo de precio:
   para distintos recorridos (no una ruta fija) — pensado para tours de
   varios días (ej. Cartagena). Se cobra como **número de días × la tarifa
   diaria de "día de sol"** (`paqueteDiaSol`, reutilizada — no hay una tabla
-  aparte). Pide un campo adicional de "número de días" en vez de hora final.
+  aparte). En vez de hora final, pide "fecha fin"; el número de días se
+  calcula solo (fecha fin − fecha inicio, ambas incluidas), nunca se pide
+  como número aparte.
 
 En los cinco casos, la hora de inicio y la fecha se usan para calcular los
 mismos recargos (nocturno, fin de semana/festivo, evento) sobre el subtotal
 del servicio (`subtotalKm`, `subtotalHoras` o `subtotalDisponibilidad`, según
 el modelo). Las horas se calculan con `calcularHorasContratadas()` a partir
-de hora inicio/fin — una fracción de hora se redondea hacia arriba, y si el
-usuario pide menos del mínimo, se cobra igual el mínimo (con aviso en
-pantalla).
+de hora inicio/fin, y los días con `calcularDiasContratados()` a partir de
+fecha inicio/fin — una fracción de hora se redondea hacia arriba, y si el
+usuario pide menos del mínimo (horas o días), se cobra igual el mínimo (con
+aviso en pantalla).
 
 Los valores del paquete y la hora adicional están en `TARIFA_POR_HORAS`
 (`lib/tarifas.ts`) — son ilustrativos, ajústalos a lo que cobra el gremio.

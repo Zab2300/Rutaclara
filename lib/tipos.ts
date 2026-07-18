@@ -114,8 +114,12 @@ export interface ParametrosCotizacionDisponibilidad extends ParametrosCotizacion
   tipoServicio: "disponibilidad_completa";
   /** Ciudad/municipio base desde donde opera el vehículo. */
   origen: string;
-  /** Cantidad de días que el vehículo queda disponible. */
-  numeroDias: number;
+  /**
+   * Último día del servicio, formato "YYYY-MM-DD" (`fecha` es el primer día).
+   * El número de días se calcula solo a partir de estas dos fechas, ambas
+   * incluidas — no se pide como un número aparte.
+   */
+  fechaFin: string;
   /** Dirección exacta o zona (opcional) — se usa solo para verificar restricción de acceso. */
   direccion?: string;
 }

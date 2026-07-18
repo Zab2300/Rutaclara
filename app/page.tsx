@@ -12,6 +12,7 @@ import SelectorTipologia from "@/components/SelectorTipologia";
 import DesgloseCotizacion from "@/components/DesgloseCotizacion";
 import {
   calcularCotizacion,
+  calcularDiasContratados,
   calcularHorasContratadas,
   HORAS_MINIMAS,
   RECARGO_FIN_DE_SEMANA_FESTIVO,
@@ -55,7 +56,7 @@ export default function PaginaCotizador() {
   const [fecha, setFecha] = useState("");
   const [hora, setHora] = useState("08:00");
   const [horaFin, setHoraFin] = useState("");
-  const [numeroDias, setNumeroDias] = useState<number>(1);
+  const [fechaFin, setFechaFin] = useState("");
   const [viaticosConductor, setViaticosConductor] = useState(false);
   const [pasajeros, setPasajeros] = useState<number>(0);
   const [tipologia, setTipologia] = useState<TipologiaId | null>(null);
@@ -73,8 +74,8 @@ export default function PaginaCotizador() {
     const base = Boolean(origen && fecha && hora && pasajeros > 0 && tipologia);
     if (esTrayecto) return Boolean(base && destino);
     if (esPorHoras) return Boolean(base && horaFin);
-    return Boolean(base && numeroDias > 0);
-  }, [esTrayecto, esPorHoras, origen, destino, fecha, hora, horaFin, numeroDias, pasajeros, tipologia]);
+    return Boolean(base && fechaFin);
+  }, [esTrayecto, esPorHoras, origen, destino, fecha, hora, horaFin, fechaFin, pasajeros, tipologia]);
 
   const infoFestivo = useMemo(() => consultarFestivo(fecha), [fecha]);
   const esFinDeSemanaFecha = useMemo(() => esFinDeSemana(fecha), [fecha]);
@@ -87,6 +88,11 @@ export default function PaginaCotizador() {
     if (!esPorHoras || !hora || !horaFin) return null;
     return calcularHorasContratadas(hora, horaFin);
   }, [esPorHoras, hora, horaFin]);
+
+  const diasEstimados = useMemo(() => {
+    if (!esDisponibilidad || !fecha || !fechaFin) return null;
+    return calcularDiasContratados(fecha, fechaFin);
+  }, [esDisponibilidad, fecha, fechaFin]);
 
   const restriccionZona = useMemo(() => {
     if (!tipologia) return null;
@@ -150,7 +156,7 @@ export default function PaginaCotizador() {
       tipologia,
       horaInicio: hora,
       fecha,
-      numeroDias,
+      fechaFin,
       direccion: direccionOrigen || undefined,
       viaticosConductor,
     });
@@ -168,7 +174,7 @@ export default function PaginaCotizador() {
           ? "Completa origen, destino, fecha, hora, pasajeros y el tipo de vehículo."
           : esPorHoras
           ? "Completa origen, fecha, hora de inicio, hora final, pasajeros y el tipo de vehículo."
-          : "Completa origen, fecha, hora, número de días, pasajeros y el tipo de vehículo."
+          : "Completa origen, fecha de inicio, fecha final, hora, pasajeros y el tipo de vehículo."
       );
       return;
     }
@@ -340,7 +346,7 @@ export default function PaginaCotizador() {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label htmlFor="fecha" className="mb-1 block text-sm font-bold text-slate-600">
-              FECHA
+              FECHA {esDisponibilidad ? "INICIO" : ""}
             </label>
             <input
               id="fecha"
@@ -388,20 +394,22 @@ export default function PaginaCotizador() {
 
         {esDisponibilidad && (
           <div>
-            <label htmlFor="numeroDias" className="mb-1 block text-sm font-bold text-slate-600">
-              NÚMERO DE DÍAS
+            <label htmlFor="fechaFin" className="mb-1 block text-sm font-bold text-slate-600">
+              FECHA FIN
             </label>
             <input
-              id="numeroDias"
-              type="number"
-              min={1}
-              max={30}
-              inputMode="numeric"
-              value={numeroDias || ""}
-              onChange={(e) => setNumeroDias(Number(e.target.value))}
-              className="btn-grande w-full border border-slate-300 px-4 text-lg"
-              placeholder="Ej: 3"
+              id="fechaFin"
+              type="date"
+              min={fecha || undefined}
+              value={fechaFin}
+              onChange={(e) => setFechaFin(e.target.value)}
+              className="btn-grande w-full border border-slate-300 px-3 text-base"
             />
+            {diasEstimados !== null && (
+              <p className="mt-1 text-xs text-slate-500">
+                Días solicitados: {diasEstimados} (de {fecha} a {fechaFin}, ambos incluidos)
+              </p>
+            )}
           </div>
         )}
 

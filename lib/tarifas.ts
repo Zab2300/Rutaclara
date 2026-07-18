@@ -247,6 +247,19 @@ export function calcularHorasContratadas(horaInicio: string, horaFin: string): n
   return Math.ceil((minutosFin - minutosInicio) / 60);
 }
 
+/**
+ * Calcula cuántos días cubre un servicio de "disponibilidad completa" a
+ * partir de la fecha de inicio y fin ("YYYY-MM-DD"), ambas incluidas — ej.
+ * el mismo día cuenta como 1, y de un viernes a un domingo cuenta como 3.
+ * Si la fecha de fin es anterior a la de inicio, se cobra igual 1 día.
+ */
+export function calcularDiasContratados(fechaInicio: string, fechaFin: string): number {
+  const inicio = new Date(fechaInicio).getTime();
+  const fin = new Date(fechaFin).getTime();
+  const diffDias = Math.round((fin - inicio) / (1000 * 60 * 60 * 24));
+  return Math.max(1, diffDias + 1);
+}
+
 // ---------------------------------------------------------------------------
 // Recargos comunes (nocturno, fin de semana/festivo, evento) — comparten
 // lógica entre los dos modelos de precio.
@@ -417,9 +430,9 @@ function calcularCotizacionPorHoras(params: ParametrosCotizacionPorHoras): Cotiz
  * días. Se cobra como N días × la tarifa diaria de "día de sol".
  */
 function calcularCotizacionDisponibilidad(params: ParametrosCotizacionDisponibilidad): Cotizacion {
-  const { origen, tipologia, horaInicio, fecha, numeroDias } = params;
+  const { origen, tipologia, horaInicio, fecha, fechaFin } = params;
 
-  const dias = Math.max(1, Math.round(numeroDias));
+  const dias = calcularDiasContratados(fecha, fechaFin);
   const valorPorDia = TARIFA_POR_HORAS[tipologia].paqueteDiaSol;
   const subtotalDisponibilidad = valorPorDia * dias;
 
