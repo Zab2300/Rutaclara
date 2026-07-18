@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  /* Evita el zoom automático de iOS al enfocar inputs con letra pequeña */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  color: #1f2937;
+  background-color: #f8fafc;
+}
+
+/* Área de contenido con espacio inferior para no quedar tapada por la nav fija */
+.contenido-app {
+  padding-bottom: 88px;
+}
+
+/* Botón base: alto mínimo 56px, letra grande, alto contraste — regla no negociable */
+.btn-grande {
+  min-height: 56px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  border-radius: 0.75rem;
+  transition: transform 0.05s ease, filter 0.15s ease;
+}
+
+.btn-grande:active {
+  transform: scale(0.98);
+  filter: brightness(0.95);
+}
+
+input,
+select,
+textarea {
+  font-size: 1rem;
+}

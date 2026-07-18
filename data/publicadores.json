@@ -1,0 +1,62 @@
+[
+  {
+    "id": "pub-1",
+    "nombre": "Turismo Valle de Aburrá",
+    "verificado": true,
+    "esNuevo": false,
+    "serviciosPublicados": 47,
+    "porcentajePagados": 100,
+    "pagoAsegurado": false,
+    "telefonoSimulado": "300 123 4567"
+  },
+  {
+    "id": "pub-2",
+    "nombre": "Excursiones El Poblado",
+    "verificado": true,
+    "esNuevo": false,
+    "serviciosPublicados": 32,
+    "porcentajePagados": 97,
+    "pagoAsegurado": false,
+    "telefonoSimulado": "301 234 5678"
+  },
+  {
+    "id": "pub-3",
+    "nombre": "Logística Andina",
+    "verificado": true,
+    "esNuevo": false,
+    "serviciosPublicados": 89,
+    "porcentajePagados": 99,
+    "pagoAsegurado": false,
+    "telefonoSimulado": "302 345 6789"
+  },
+  {
+    "id": "pub-4",
+    "nombre": "Constructora Los Andes S.A.S.",
+    "verificado": true,
+    "esNuevo": false,
+    "serviciosPublicados": 12,
+    "porcentajePagados": 100,
+    "pagoAsegurado": false,
+    "telefonoSimulado": "303 456 7890"
+  },
+  {
+    "id": "pub-5",
+    "nombre": "Colegio San Rafael",
+    "verificado": true,
+    "esNuevo": false,
+    "serviciosPublicados": 21,
+    "porcentajePagados": 100,
+    "pagoAsegurado": false,
+    "telefonoSimulado": "304 567 8901"
+  },
+  {
+    "id": "pub-6",
+    "nombre": "Andrés Felipe Zapata",
+    "verificado": false,
+    "esNuevo": true,
+    "serviciosPublicados": 0,
+    "porcentajePagados": 0,
+    "pagoAsegurado": true,
+    "telefonoSimulado": "305 678 9012"
+  }
+]

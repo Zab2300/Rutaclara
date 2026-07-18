@@ -1,0 +1,51 @@
+{
+  "id": "trans-demo",
+  "nombre": "Carlos Alberto Restrepo",
+  "vehiculo": {
+    "placa": "VBA-115",
+    "tipologia": "van15",
+    "empresaVinculacion": "Turismo Valle de Aburrá",
+    "fotoPlaceholder": "van"
+  },
+  "documentos": [
+    {
+      "nombre": "SOAT",
+      "estado": "verde",
+      "vigenciaTexto": "Vence en 8 meses",
+      "diasRestantes": 243
+    },
+    {
+      "nombre": "Técnico-mecánica",
+      "estado": "amarillo",
+      "vigenciaTexto": "Vence en 22 días",
+      "diasRestantes": 22
+    },
+    {
+      "nombre": "Póliza RCC",
+      "estado": "verde",
+      "vigenciaTexto": "Vence en 10 meses",
+      "diasRestantes": 305
+    },
+    {
+      "nombre": "Póliza RCE",
+      "estado": "verde",
+      "vigenciaTexto": "Vence en 10 meses",
+      "diasRestantes": 305
+    },
+    {
+      "nombre": "Tarjeta de operación",
+      "estado": "verde",
+      "vigenciaTexto": "Vence en 14 meses",
+      "diasRestantes": 420
+    },
+    {
+      "nombre": "Licencia de conducción",
+      "estado": "verde",
+      "vigenciaTexto": "Vence en 3 años",
+      "diasRestantes": 1095
+    }
+  ],
+  "serviciosCompletados": 163,
+  "calificacion": 4.8,
+  "porcentajePuntualidad": 98
+}
