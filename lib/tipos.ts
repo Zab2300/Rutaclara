@@ -68,12 +68,25 @@ export interface ParametrosCotizacion {
   tipologia: TipologiaId;
   /** Hora de inicio del servicio en formato "HH:mm", 24 horas. */
   horaInicio: string;
+  /** Fecha del servicio en formato "YYYY-MM-DD" (define festivo/fin de semana/evento). */
+  fecha: string;
+}
+
+/** Evento o temporada alta de una ciudad que incrementa la demanda (y el precio). */
+export interface EventoCiudad {
+  nombre: string;
+  ciudad: string;
+  fechaInicio: string; // "YYYY-MM-DD"
+  fechaFin: string; // "YYYY-MM-DD"
+  /** Recargo adicional sobre el subtotal por distancia, ej. 0.25 = 25%. */
+  recargo: number;
 }
 
 export interface Cotizacion {
   origen: string;
   destino: string;
   tipologia: TipologiaId;
+  fecha: string;
   kmIda: number;
   kmTotales: number;
   tramo: IndiceTramo;
@@ -82,6 +95,13 @@ export interface Cotizacion {
   peajes: number;
   aplicaRecargoNocturno: boolean;
   recargoNocturnoValor: number;
+  esFinDeSemana: boolean;
+  esFestivo: boolean;
+  nombreFestivo?: string;
+  aplicaRecargoFinDeSemanaFestivo: boolean;
+  recargoFinDeSemanaFestivoValor: number;
+  evento: EventoCiudad | null;
+  recargoEventoValor: number;
   tarifaMinimaAplicada: boolean;
   total: number;
 }

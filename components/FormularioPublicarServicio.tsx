@@ -64,7 +64,7 @@ export default function FormularioPublicarServicio({
   );
 
   const tarifaSugerida = useMemo(() => {
-    if (!origen || !destino || !tipologia) return null;
+    if (!origen || !destino || !tipologia || !fecha) return null;
     const distancia = obtenerDistanciaSync(origen, destino);
     if (!distancia) return null;
     return calcularCotizacion({
@@ -74,8 +74,9 @@ export default function FormularioPublicarServicio({
       peajeIda: distancia.peaje,
       tipologia,
       horaInicio: hora,
+      fecha,
     });
-  }, [origen, destino, tipologia, hora]);
+  }, [origen, destino, tipologia, hora, fecha]);
 
   // Si el valor no fue tocado a mano, lo seguimos actualizando con la sugerencia.
   useEffect(() => {

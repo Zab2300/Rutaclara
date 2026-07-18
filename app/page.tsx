@@ -10,9 +10,11 @@ import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
 import SelectorTipologia from "@/components/SelectorTipologia";
 import DesgloseCotizacion from "@/components/DesgloseCotizacion";
-import { calcularCotizacion } from "@/lib/tarifas";
+import { calcularCotizacion, RECARGO_FIN_DE_SEMANA_FESTIVO } from "@/lib/tarifas";
 import { MUNICIPIOS, obtenerDistanciaSync, estimarDistanciaManual } from "@/lib/distancias";
 import { mensajeCotizacion, linkWhatsApp } from "@/lib/whatsapp";
+import { consultarFestivo, esFinDeSemana } from "@/lib/festivos";
+import { buscarEventoAplicable } from "@/lib/eventos";
 import type { Cotizacion, TipologiaId } from "@/lib/tipos";
 
 export default function PaginaCotizador() {
@@ -35,6 +37,13 @@ export default function PaginaCotizador() {
     [origen, destino, fecha, hora, pasajeros, tipologia]
   );
 
+  const infoFestivo = useMemo(() => consultarFestivo(fecha), [fecha]);
+  const esFinDeSemanaFecha = useMemo(() => esFinDeSemana(fecha), [fecha]);
+  const eventoAplicable = useMemo(
+    () => buscarEventoAplicable(origen, destino, fecha),
+    [origen, destino, fecha]
+  );
+
   function cotizarConDistancia(kmIda: number, peajeIda: number) {
     if (!tipologia) return;
     const cotizacion = calcularCotizacion({
@@ -44,6 +53,7 @@ export default function PaginaCotizador() {
       peajeIda,
       tipologia,
       horaInicio: hora,
+      fecha,
     });
     setResultado(cotizacion);
     setRutaNoEncontrada(false);
@@ -183,6 +193,27 @@ export default function PaginaCotizador() {
             />
           </div>
         </div>
+
+        {(infoFestivo.esFestivo || esFinDeSemanaFecha || eventoAplicable) && (
+          <div className="space-y-2">
+            {(infoFestivo.esFestivo || esFinDeSemanaFecha) && (
+              <p className="rounded-xl bg-rc-naranja-claro px-3 py-2 text-sm font-semibold text-rc-naranja">
+                📅{" "}
+                {infoFestivo.esFestivo
+                  ? `Es festivo (${infoFestivo.nombre})`
+                  : "Es fin de semana"}{" "}
+                — aplica recargo del {Math.round(RECARGO_FIN_DE_SEMANA_FESTIVO * 100)}% por mayor
+                ocupación de vehículos.
+              </p>
+            )}
+            {eventoAplicable && (
+              <p className="rounded-xl bg-rc-naranja-claro px-3 py-2 text-sm font-semibold text-rc-naranja">
+                🎉 Hay {eventoAplicable.nombre} en {eventoAplicable.ciudad} esos días — aplica
+                recargo del {Math.round(eventoAplicable.recargo * 100)}% por alta demanda.
+              </p>
+            )}
+          </div>
+        )}
 
         <div>
           <label htmlFor="pasajeros" className="mb-1 block text-sm font-bold text-slate-600">

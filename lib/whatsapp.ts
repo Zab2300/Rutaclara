@@ -20,6 +20,12 @@ export function mensajeCotizacion(cotizacion: Cotizacion): string {
     `Vehículo: ${tipologia.nombre}`,
     `Distancia: ${cotizacion.kmIda} km (ida) · ${cotizacion.kmTotales} km totales`,
     cotizacion.aplicaRecargoNocturno ? `Incluye recargo nocturno (30%)` : null,
+    cotizacion.aplicaRecargoFinDeSemanaFestivo
+      ? `Incluye recargo ${cotizacion.esFestivo ? `festivo (${cotizacion.nombreFestivo})` : "fin de semana"} (20%)`
+      : null,
+    cotizacion.evento
+      ? `Incluye recargo por ${cotizacion.evento.nombre} (${Math.round(cotizacion.evento.recargo * 100)}%)`
+      : null,
     `*Valor: ${formatoMoneda(cotizacion.total)}*`,
     ``,
     `Tarifa de referencia del mercado — Antioquia 2026.`,

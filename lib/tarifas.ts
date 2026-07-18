@@ -9,13 +9,21 @@
  *  2. subtotalKm = km_ida × $/km del tramo — el $/km del listado ya está
  *     pensado sobre el km de ida, así cotiza el mercado hoy.
  *  3. Los peajes se cobran ida y regreso: peaje_ida × 2.
- *  4. El recargo nocturno (30%) aplica sobre el subtotalKm (el valor del
- *     servicio en sí), no sobre los peajes, que son un costo de paso fijo.
+ *  4. Recargos sobre el subtotalKm (el valor del servicio en sí, no sobre
+ *     los peajes que son un costo de paso fijo), todos independientes y
+ *     acumulables entre sí:
+ *       - Nocturno (30%): hora de inicio entre 8:00 p.m. y 6:00 a.m.
+ *       - Fin de semana/festivo (20%): sábado, domingo o festivo colombiano
+ *         (mayor ocupación de los vehículos disponibles).
+ *       - Evento/temporada alta (varía por evento): ferias o fiestas
+ *         conocidas en el origen o destino en esas fechas.
  *  5. Se compara contra la tarifa mínima de la tipología; si el cálculo da
  *     menos, se usa la mínima.
  *  6. El total se redondea al múltiplo de $1.000 más cercano.
  */
 
+import { buscarEventoAplicable } from "./eventos";
+import { consultarFestivo, esFinDeSemana } from "./festivos";
 import type {
   Cotizacion,
   IndiceTramo,
@@ -108,6 +116,9 @@ export const TARIFA_MINIMA: Record<TipologiaId, number> = {
 /** Recargo nocturno: 20:00 a 06:00. */
 export const RECARGO_NOCTURNO = 0.3;
 
+/** Recargo por fin de semana o festivo: mayor ocupación de vehículos disponibles. */
+export const RECARGO_FIN_DE_SEMANA_FESTIVO = 0.2;
+
 /** Multiplicador de peaje para vehículos de más de 2 ejes (buseta/busetón/bus). */
 const MULTIPLICADOR_PEAJE_VEHICULO_GRANDE = 1.8;
 const TIPOLOGIAS_VEHICULO_GRANDE: TipologiaId[] = ["buseta", "buseton", "bus"];
@@ -164,7 +175,7 @@ export function formatoMoneda(valor: number): string {
  * aplica el multiplicador ×1.8 para buseta/busetón/bus automáticamente.
  */
 export function calcularCotizacion(params: ParametrosCotizacion): Cotizacion {
-  const { origen, destino, kmIda, peajeIda, tipologia, horaInicio } = params;
+  const { origen, destino, kmIda, peajeIda, tipologia, horaInicio, fecha } = params;
 
   const tipologiaData = TARIFAS_KM[tipologia];
   const tramo = obtenerTramo(kmIda);
@@ -181,7 +192,22 @@ export function calcularCotizacion(params: ParametrosCotizacion): Cotizacion {
     ? Math.round(subtotalKm * RECARGO_NOCTURNO)
     : 0;
 
-  const preTotal = subtotalKm + peajes + recargoNocturnoValor;
+  const infoFestivo = consultarFestivo(fecha);
+  const esFinDeSemanaFecha = esFinDeSemana(fecha);
+  const aplicaRecargoFinDeSemanaFestivo = esFinDeSemanaFecha || infoFestivo.esFestivo;
+  const recargoFinDeSemanaFestivoValor = aplicaRecargoFinDeSemanaFestivo
+    ? Math.round(subtotalKm * RECARGO_FIN_DE_SEMANA_FESTIVO)
+    : 0;
+
+  const evento = buscarEventoAplicable(origen, destino, fecha);
+  const recargoEventoValor = evento ? Math.round(subtotalKm * evento.recargo) : 0;
+
+  const preTotal =
+    subtotalKm +
+    peajes +
+    recargoNocturnoValor +
+    recargoFinDeSemanaFestivoValor +
+    recargoEventoValor;
   const minima = TARIFA_MINIMA[tipologia];
   const tarifaMinimaAplicada = preTotal < minima;
 
@@ -191,6 +217,7 @@ export function calcularCotizacion(params: ParametrosCotizacion): Cotizacion {
     origen,
     destino,
     tipologia,
+    fecha,
     kmIda,
     kmTotales,
     tramo,
@@ -199,6 +226,13 @@ export function calcularCotizacion(params: ParametrosCotizacion): Cotizacion {
     peajes,
     aplicaRecargoNocturno,
     recargoNocturnoValor,
+    esFinDeSemana: esFinDeSemanaFecha,
+    esFestivo: infoFestivo.esFestivo,
+    nombreFestivo: infoFestivo.nombre,
+    aplicaRecargoFinDeSemanaFestivo,
+    recargoFinDeSemanaFestivoValor,
+    evento,
+    recargoEventoValor,
     tarifaMinimaAplicada,
     total,
   };

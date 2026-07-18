@@ -41,6 +41,24 @@ export default function DesgloseCotizacion({ cotizacion }: { cotizacion: Cotizac
             valor={formatoMoneda(cotizacion.recargoNocturnoValor)}
           />
         )}
+        {cotizacion.aplicaRecargoFinDeSemanaFestivo && (
+          <Fila
+            etiqueta={
+              cotizacion.esFestivo
+                ? `Recargo festivo — ${cotizacion.nombreFestivo} (20%)`
+                : "Recargo fin de semana (20%)"
+            }
+            valor={formatoMoneda(cotizacion.recargoFinDeSemanaFestivoValor)}
+          />
+        )}
+        {cotizacion.evento && (
+          <Fila
+            etiqueta={`Recargo por evento — ${cotizacion.evento.nombre} (${Math.round(
+              cotizacion.evento.recargo * 100
+            )}%)`}
+            valor={formatoMoneda(cotizacion.recargoEventoValor)}
+          />
+        )}
         {cotizacion.tarifaMinimaAplicada && (
           <Fila etiqueta="Ajuste a tarifa mínima" valor="aplicado" sutil />
         )}
